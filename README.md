@@ -23,6 +23,12 @@ $ ninja -C build
 
 See wmenu(1)
 
+## Contributing
+
+Send patches and questions to [~adnano/wmenu-devel](https://lists.sr.ht/~adnano/wmenu-devel).
+
+Subscribe to release announcements on [~adnano/wmenu-announce](https://lists.sr.ht/~adnano/wmenu-announce).
+
 ## Credits
 
 This project started as a fork of [dmenu-wl](https://github.com/nyyManni/dmenu-wayland).
