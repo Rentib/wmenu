@@ -1,7 +1,7 @@
 # wmenu - dmenu for Wayland
 
-An efficient dynamic menu for supported Wayland compositors (requires
-`wlr_layer_shell_v1` support).
+An efficient dynamic menu for Sway and wlroots based Wayland compositors
+(requires `wlr_layer_shell_v1` support).
 
 ## Installation
 
@@ -22,6 +22,13 @@ $ ninja -C build
 ## Usage
 
 See wmenu(1)
+
+To use wmenu with Sway, you can add the following to your configuration file:
+
+```
+set $menu dmenu_path | wmenu | xargs swaymsg exec --
+bindsym $mod+d exec $menu
+```
 
 ## Contributing
 
