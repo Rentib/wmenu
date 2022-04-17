@@ -910,7 +910,7 @@ void read_stdin(struct menu_state *state) {
 
 static void menu_init(struct menu_state *state) {
 	int height = get_font_height(state->font);
-	state->line_height = height + 2;
+	state->line_height = height + 3;
 	state->height = state->line_height;
 	if (state->vertical) {
 		state->height += state->height * state->lines;
