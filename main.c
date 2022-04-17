@@ -61,6 +61,7 @@ struct menu_state {
 
 	int width;
 	int height;
+	int line_height;
 	int padding;
 	int inputw;
 	int promptw;
@@ -69,6 +70,7 @@ struct menu_state {
 	bool bottom;
 	int (*fstrncmp)(const char *, const char *, size_t);
 	char *font;
+	bool vertical;
 	int lines;
 	char *prompt;
 	uint32_t background, foreground;
@@ -112,7 +114,30 @@ int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 
 	int text_width, text_height;
 	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, str);
-	int text_y = (state->height / 2.0) - (text_height / 2.0);
+	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
+
+	if (background) {
+		int bg_width = text_width + left_padding + right_padding;
+		cairo_set_source_u32(cairo, background);
+		cairo_rectangle(cairo, x, y, bg_width, height);
+		cairo_fill(cairo);
+	}
+
+	cairo_move_to(cairo, x + left_padding, y + text_y);
+	cairo_set_source_u32(cairo, foreground);
+	pango_printf(cairo, state->font, 1, str);
+
+	return x + text_width + left_padding + right_padding;
+}
+
+int render_horizontal_item(struct menu_state *state, cairo_t *cairo, const char *str,
+		int x, int y, int width, int height,
+		uint32_t foreground, uint32_t background,
+		int left_padding, int right_padding) {
+
+	int text_width, text_height;
+	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, str);
+	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
 
 	if (x + left_padding + text_width > width) {
 		return -1;
@@ -120,11 +145,11 @@ int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 		if (background) {
 			int bg_width = text_width + left_padding + right_padding;
 			cairo_set_source_u32(cairo, background);
-			cairo_rectangle(cairo, x, 0, bg_width, height);
+			cairo_rectangle(cairo, x, y, bg_width, height);
 			cairo_fill(cairo);
 		}
 
-		cairo_move_to(cairo, x + left_padding, text_y);
+		cairo_move_to(cairo, x + left_padding, y + text_y);
 		cairo_set_source_u32(cairo, foreground);
 		pango_printf(cairo, state->font, 1, str);
 	}
@@ -132,61 +157,117 @@ int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 	return x + text_width + left_padding + right_padding;
 }
 
+void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *str,
+		int x, int y, int width, int height,
+		uint32_t foreground, uint32_t background,
+		int left_padding) {
+
+	int text_height;
+	get_text_size(cairo, state->font, NULL, &text_height, NULL, 1, str);
+	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
+
+	if (background) {
+		int bg_width = state->width - x;
+		cairo_set_source_u32(cairo, background);
+		cairo_rectangle(cairo, x, y, bg_width, height);
+		cairo_fill(cairo);
+	}
+
+	cairo_move_to(cairo, x + left_padding, y + text_y);
+	cairo_set_source_u32(cairo, foreground);
+	pango_printf(cairo, state->font, 1, str);
+}
+
 void scroll_matches(struct menu_state *state) {
 	if (!state->matches) {
 		return;
 	}
 
-	// Calculate available space
-	int padding = state->padding;
-	int width = state->width - state->inputw - state->promptw
-		- state->left_arrow - state->right_arrow;
-	if (state->leftmost == NULL) {
-		state->leftmost = state->matches;
-		if (state->rightmost == NULL) {
-			int offs = 0;
-			struct menu_item *item;
-			for (item = state->matches; item->left != state->selection; item = item->right) {
-				offs += item->width + 2 * padding;
-				if (offs >= width) {
-					state->leftmost = item->left;
-					offs = width - offs;
+	if (state->vertical) {
+		if (state->leftmost == NULL) {
+			state->leftmost = state->matches;
+			if (state->rightmost == NULL) {
+				int offs = 0;
+				struct menu_item *item;
+				for (item = state->matches; item->left != state->selection; item = item->right) {
+					offs += state->line_height;
+					if (offs >= state->height) {
+						state->leftmost = item->left;
+						offs = state->height - offs;
+					}
 				}
-			}
-		} else {
-			int offs = 0;
-			struct menu_item *item;
-			for (item = state->rightmost; item; item = item->left) {
-				offs += item->width + 2 * padding;
-				if (offs >= width) {
-					state->leftmost = item->right;
-					break;
+			} else {
+				int offs = 0;
+				struct menu_item *item;
+				for (item = state->rightmost; item; item = item->left) {
+					offs += state->line_height;
+					if (offs >= state->height) {
+						state->leftmost = item->right;
+						break;
+					}
 				}
 			}
 		}
-	}
-	if (state->rightmost == NULL) {
-		state->rightmost = state->matches;
-		int offs = 0;
-		struct menu_item *item;
-		for (item = state->leftmost; item; item = item->right) {
-			offs += item->width + 2 * padding;
-			if (offs >= width) {
-				break;
+		if (state->rightmost == NULL) {
+			state->rightmost = state->matches;
+			int offs = 0;
+			struct menu_item *item;
+			for (item = state->leftmost; item; item = item->right) {
+				offs += state->line_height;
+				if (offs >= state->height) {
+					break;
+				}
+				state->rightmost = item;
 			}
-			state->rightmost = item;
+		}
+	} else {
+		// Calculate available space
+		int padding = state->padding;
+		int width = state->width - state->inputw - state->promptw
+			- state->left_arrow - state->right_arrow;
+		if (state->leftmost == NULL) {
+			state->leftmost = state->matches;
+			if (state->rightmost == NULL) {
+				int offs = 0;
+				struct menu_item *item;
+				for (item = state->matches; item->left != state->selection; item = item->right) {
+					offs += item->width + 2 * padding;
+					if (offs >= width) {
+						state->leftmost = item->left;
+						offs = width - offs;
+					}
+				}
+			} else {
+				int offs = 0;
+				struct menu_item *item;
+				for (item = state->rightmost; item; item = item->left) {
+					offs += item->width + 2 * padding;
+					if (offs >= width) {
+						state->leftmost = item->right;
+						break;
+					}
+				}
+			}
+		}
+		if (state->rightmost == NULL) {
+			state->rightmost = state->matches;
+			int offs = 0;
+			struct menu_item *item;
+			for (item = state->leftmost; item; item = item->right) {
+				offs += item->width + 2 * padding;
+				if (offs >= width) {
+					break;
+				}
+				state->rightmost = item;
+			}
 		}
 	}
 }
 
 void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 	int width = state->width;
-	int height = state->height;
 	int padding = state->padding;
 
-	int text_height;
-	get_text_size(cairo, state->font, NULL, &text_height, NULL, 1, "");
-	int y = (height / 2.0) - (text_height / 2.0);
 
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_u32(cairo, state->background);
@@ -197,7 +278,7 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 	// Draw prompt
 	if (state->prompt) {
 		state->promptw = render_text(state, cairo, state->prompt,
-				0, y, state->width, state->height,
+				0, 0, state->width, state->line_height,
 				state->promptfg, state->promptbg,
 				padding, padding/2);
 		x += state->promptw;
@@ -205,12 +286,12 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 
 	// Draw background
 	cairo_set_source_u32(cairo, state->background);
-	cairo_rectangle(cairo, x, 0, 300, height);
+	cairo_rectangle(cairo, x, 0, 300, state->height);
 	cairo_fill(cairo);
 
 	// Draw input
 	render_text(state, cairo, state->text,
-			x, y, state->width, state->height,
+			x, 0, state->width, state->line_height,
 			state->foreground, 0, padding, padding);
 
 	// Draw cursor
@@ -222,7 +303,7 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 			- text_width(cairo, state->font, &state->text[state->cursor])
 			- cursor_width / 2;
 		cairo_rectangle(cairo, cursor_pos, cursor_margin, cursor_width,
-				state->height - 2 * cursor_margin);
+				state->line_height - 2 * cursor_margin);
 		cairo_fill(cairo);
 	}
 
@@ -230,42 +311,59 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 		return;
 	}
 
-	// Leave room for input
-	x += state->inputw;
-
-	// Calculate scroll indicator widths
-	state->left_arrow = text_width(cairo, state->font, "<") + 2 * padding;
-	state->right_arrow = text_width(cairo, state->font, ">") + 2 * padding;
-
-	// Remember scroll indicator position
-	int left_arrow_pos = x + padding;
-	x += state->left_arrow;
-
-	// Draw matches
-	bool scroll_right = false;
-	struct menu_item *item;
-	for (item = state->leftmost; item; item = item->right) {
-		uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
-		uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
-		x = render_text(state, cairo, item->text,
-			x, y, width - state->right_arrow, height,
-			fg_color, bg_color, padding, padding);
-		if (x == -1) {
-			scroll_right = true;
-			break;
+	if (state->vertical) {
+		// Draw matches vertically
+		int y = state->line_height;
+		struct menu_item *item;
+		for (item = state->leftmost; item; item = item->right) {
+			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
+			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
+			render_vertical_item(state, cairo, item->text,
+				x, y, width, state->line_height,
+				fg_color, bg_color, padding);
+			y += state->line_height;
+			if (y >= state->height) {
+				break;
+			}
 		}
-	}
+	} else {
+		// Leave room for input
+		x += state->inputw;
 
-	// Draw left scroll indicator if necessary
-	if (state->leftmost != state->matches) {
-		cairo_move_to(cairo, left_arrow_pos, y);
-		pango_printf(cairo, state->font, 1, "<");
-	}
+		// Calculate scroll indicator widths
+		state->left_arrow = text_width(cairo, state->font, "<") + 2 * padding;
+		state->right_arrow = text_width(cairo, state->font, ">") + 2 * padding;
 
-	// Draw right scroll indicator if necessary
-	if (scroll_right) {
-		cairo_move_to(cairo, width - state->right_arrow + padding, y);
-		pango_printf(cairo, state->font, 1, ">");
+		// Remember scroll indicator position
+		int left_arrow_pos = x + padding;
+		x += state->left_arrow;
+
+		// Draw matches horizontally
+		bool scroll_right = false;
+		struct menu_item *item;
+		for (item = state->leftmost; item; item = item->right) {
+			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
+			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
+			x = render_horizontal_item(state, cairo, item->text,
+				x, 0, width - state->right_arrow, state->line_height,
+				fg_color, bg_color, padding, padding);
+			if (x == -1) {
+				scroll_right = true;
+				break;
+			}
+		}
+
+		// Draw left scroll indicator if necessary
+		if (state->leftmost != state->matches) {
+			cairo_move_to(cairo, left_arrow_pos, 0);
+			pango_printf(cairo, state->font, 1, "<");
+		}
+
+		// Draw right scroll indicator if necessary
+		if (scroll_right) {
+			cairo_move_to(cairo, width - state->right_arrow + padding, 0);
+			pango_printf(cairo, state->font, 1, ">");
+		}
 	}
 }
 
@@ -423,6 +521,9 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Left:
+		if (state->vertical) {
+			break;
+		}
 		if (state->cursor && (!state->selection || !state->selection->left)) {
 			state->cursor = nextrune(state, -1);
 			render_frame(state);
@@ -438,6 +539,46 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Right:
+		if (state->vertical) {
+			break;
+		}
+		if (state->cursor < len) {
+			state->cursor = nextrune(state, +1);
+			render_frame(state);
+		} else if (state->cursor == len) {
+			if (state->selection && state->selection->right) {
+				if (state->selection == state->rightmost) {
+					state->leftmost = state->selection->right;
+					state->rightmost = NULL;
+				}
+				state->selection = state->selection->right;
+				scroll_matches(state);
+				render_frame(state);
+			}
+		}
+		break;
+	case XKB_KEY_Up:
+		if (!state->vertical) {
+			break;
+		}
+		if (state->cursor && (!state->selection || !state->selection->left)) {
+			state->cursor = nextrune(state, -1);
+			render_frame(state);
+		}
+		if (state->selection && state->selection->left) {
+			if (state->selection == state->leftmost) {
+				state->rightmost = state->selection->left;
+				state->leftmost = NULL;
+			}
+			state->selection = state->selection->left;
+			scroll_matches(state);
+			render_frame(state);
+		}
+		break;
+	case XKB_KEY_Down:
+		if (!state->vertical) {
+			break;
+		}
 		if (state->cursor < len) {
 			state->cursor = nextrune(state, +1);
 			render_frame(state);
@@ -769,7 +910,11 @@ void read_stdin(struct menu_state *state) {
 
 static void menu_init(struct menu_state *state) {
 	int height = get_font_height(state->font);
-	state->height = height + 2;
+	state->line_height = height + 2;
+	state->height = state->line_height;
+	if (state->vertical) {
+		state->height += state->height * state->lines;
+	}
 	state->padding = height / 2;
 
 	state->display = wl_display_connect(NULL);
@@ -856,6 +1001,7 @@ int main(int argc, char **argv) {
 	struct menu_state state = {
 		.fstrncmp = strncmp,
 		.font = "monospace 10",
+		.vertical = false,
 		.background = 0x222222ff,
 		.foreground = 0xbbbbbbff,
 		.promptbg = 0x005577ff,
@@ -885,8 +1031,7 @@ int main(int argc, char **argv) {
 			state.font = optarg;
 			break;
 		case 'l':
-			// TODO
-			fputs("warning: -l unimplemented\n", stderr);
+			state.vertical = true;
 			state.lines = atoi(optarg);
 			break;
 		case 'o':
