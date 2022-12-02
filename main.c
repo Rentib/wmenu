@@ -21,7 +21,6 @@
 #include "pango.h"
 #include "pool-buffer.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
-#include "xdg-output-unstable-v1-client-protocol.h"
 
 struct menu_item {
 	char *text;
@@ -33,7 +32,6 @@ struct menu_item {
 struct output {
 	struct menu_state *menu;
 	struct wl_output *output;
-	struct zxdg_output_v1 *xdg_output;
 	int32_t scale;
 };
 
@@ -47,7 +45,6 @@ struct menu_state {
 	struct wl_seat *seat;
 	struct wl_keyboard *keyboard;
 	struct zwlr_layer_shell_v1 *layer_shell;
-	struct zxdg_output_manager_v1 *output_manager;
 
 	struct wl_surface *surface;
 	struct zwlr_layer_surface_v1 *layer_surface;
@@ -448,8 +445,7 @@ static void output_scale(void *data, struct wl_output *wl_output, int32_t factor
 	output->scale = factor;
 }
 
-static void output_name(void *data, struct zxdg_output_v1 *xdg_output,
-		const char *name) {
+static void output_name(void *data, struct wl_output *wl_output, const char *name) {
 	struct output *output = data;
 	struct menu_state *state = output->menu;
 	char *outname = state->output_name;
@@ -463,6 +459,8 @@ struct wl_output_listener output_listener = {
 	.mode = noop,
 	.done = noop,
 	.scale = output_scale,
+	.name = output_name,
+	.description = noop,
 };
 
 static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
@@ -851,14 +849,6 @@ const struct wl_seat_listener seat_listener = {
 	.name = noop,
 };
 
-struct zxdg_output_v1_listener xdg_output_listener = {
-	.logical_position = noop,
-	.logical_size = noop,
-	.done = noop,
-	.name = output_name,
-	.description = noop,
-};
-
 static void handle_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *interface, uint32_t version) {
 	struct menu_state *state = data;
@@ -874,23 +864,14 @@ static void handle_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
 		state->layer_shell = wl_registry_bind(registry, name,
 				&zwlr_layer_shell_v1_interface, 1);
-	} else if (strcmp(interface, zxdg_output_manager_v1_interface.name) == 0) {
-		state->output_manager = wl_registry_bind(registry, name,
-			&zxdg_output_manager_v1_interface, 3);
 	} else if (strcmp(interface, wl_output_interface.name) == 0) {
 		struct output *output = calloc(1, sizeof(struct output));
 		output->output = wl_registry_bind(registry, name,
-				&wl_output_interface, 3);
+				&wl_output_interface, 4);
 		output->menu = state;
 		output->scale = 1;
 		wl_output_set_user_data(output->output, output);
 		wl_output_add_listener(output->output, &output_listener, output);
-		if (state->output_manager != NULL) {
-                       output->xdg_output = zxdg_output_manager_v1_get_xdg_output(
-                               state->output_manager, output->output);
-                       zxdg_output_v1_add_listener(output->xdg_output,
-                               &xdg_output_listener, output);
-		}
 	}
 }
 
@@ -1038,7 +1019,6 @@ static void menu_init(struct menu_state *state) {
 	assert(state->compositor != NULL);
 	assert(state->layer_shell != NULL);
 	assert(state->shm != NULL);
-	assert(state->output_manager != NULL);
 
 	// Second roundtrip for xdg-output
 	wl_display_roundtrip(state->display);
