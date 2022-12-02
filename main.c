@@ -501,6 +501,96 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 			XKB_MOD_NAME_SHIFT,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
 
+	if (ctrl) {
+		// Emacs-style line editing bindings
+		switch (sym) {
+		case XKB_KEY_a:
+			sym = XKB_KEY_Home;
+			break;
+		case XKB_KEY_b:
+			sym = XKB_KEY_Left;
+			break;
+		case XKB_KEY_c:
+			sym = XKB_KEY_Escape;
+			break;
+		case XKB_KEY_d:
+			sym = XKB_KEY_Delete;
+			break;
+		case XKB_KEY_e:
+			sym = XKB_KEY_End;
+			break;
+		case XKB_KEY_f:
+			sym = XKB_KEY_Right;
+			break;
+		case XKB_KEY_g:
+			sym = XKB_KEY_Escape;
+			break;
+		case XKB_KEY_h:
+			sym = XKB_KEY_BackSpace;
+			break;
+		case XKB_KEY_i:
+			sym = XKB_KEY_Tab;
+			break;
+		case XKB_KEY_j:
+		case XKB_KEY_J:
+		case XKB_KEY_m:
+		case XKB_KEY_M:
+			sym = XKB_KEY_Return;
+			ctrl = false;
+			break;
+		case XKB_KEY_n:
+			sym = XKB_KEY_Down;
+			break;
+		case XKB_KEY_p:
+			sym = XKB_KEY_Up;
+			break;
+
+		case XKB_KEY_k:
+			// Delete right
+			state->text[state->cursor] = '\0';
+			match(state);
+			render_frame(state);
+			return;
+		case XKB_KEY_u:
+			// Delete left
+			insert(state, NULL, 0 - state->cursor);
+			render_frame(state);
+			return;
+		case XKB_KEY_w:
+			// Delete word
+			while (state->cursor > 0 && state->text[nextrune(state, -1)] == ' ') {
+				insert(state, NULL, nextrune(state, -1) - state->cursor);
+			}
+			while (state->cursor > 0 && state->text[nextrune(state, -1)] != ' ') {
+				insert(state, NULL, nextrune(state, -1) - state->cursor);
+			}
+			render_frame(state);
+			return;
+		case XKB_KEY_Left:
+		case XKB_KEY_KP_Left:
+			// Move to beginning of word
+			while (state->cursor > 0 && state->text[nextrune(state, -1)] == ' ') {
+				state->cursor = nextrune(state, -1);
+			}
+			while (state->cursor > 0 && state->text[nextrune(state, -1)] != ' ') {
+				state->cursor = nextrune(state, -1);
+			}
+			render_frame(state);
+			return;
+		case XKB_KEY_Right:
+		case XKB_KEY_KP_Right:
+			// Move to end of word
+			while (state->cursor > 0 && state->text[nextrune(state, -1)] == ' ') {
+				state->cursor = nextrune(state, -1);
+			}
+			while (state->cursor > 0 && state->text[nextrune(state, -1)] != ' ') {
+				state->cursor = nextrune(state, -1);
+			}
+			render_frame(state);
+			return;
+		}
+	}
+
 	char buf[8];
 	size_t len = strlen(state->text);
 	switch (sym) {
