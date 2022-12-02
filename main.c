@@ -501,6 +501,8 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 			XKB_MOD_NAME_SHIFT,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
 
+	size_t len = strlen(state->text);
+
 	if (ctrl) {
 		// Emacs-style line editing bindings
 		switch (sym) {
@@ -580,11 +582,11 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		case XKB_KEY_Right:
 		case XKB_KEY_KP_Right:
 			// Move to end of word
-			while (state->cursor > 0 && state->text[nextrune(state, -1)] == ' ') {
-				state->cursor = nextrune(state, -1);
+			while (state->cursor < len && state->text[state->cursor] == ' ') {
+				state->cursor = nextrune(state, +1);
 			}
-			while (state->cursor > 0 && state->text[nextrune(state, -1)] != ' ') {
-				state->cursor = nextrune(state, -1);
+			while (state->cursor < len && state->text[state->cursor] != ' ') {
+				state->cursor = nextrune(state, +1);
 			}
 			render_frame(state);
 			return;
@@ -592,7 +594,6 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 	}
 
 	char buf[8];
-	size_t len = strlen(state->text);
 	switch (sym) {
 	case XKB_KEY_Return:
 	case XKB_KEY_KP_Enter:
