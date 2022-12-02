@@ -504,8 +504,8 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 	char buf[8];
 	size_t len = strlen(state->text);
 	switch (sym) {
-	case XKB_KEY_KP_Enter:
 	case XKB_KEY_Return:
+	case XKB_KEY_KP_Enter:
 		if (shift) {
 			puts(state->text);
 			fflush(stdout);
@@ -521,6 +521,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Left:
+	case XKB_KEY_KP_Left:
 		if (state->vertical) {
 			break;
 		}
@@ -539,6 +540,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Right:
+	case XKB_KEY_KP_Right:
 		if (state->vertical) {
 			break;
 		}
@@ -558,6 +560,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Up:
+	case XKB_KEY_KP_Up:
 		if (!state->vertical) {
 			break;
 		}
@@ -576,6 +579,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Down:
+	case XKB_KEY_KP_Down:
 		if (!state->vertical) {
 			break;
 		}
@@ -595,6 +599,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Page_Up:
+	case XKB_KEY_KP_Page_Up:
 		if (state->leftmost && state->leftmost->left) {
 			state->rightmost = state->leftmost->left;
 			state->leftmost = NULL;
@@ -604,6 +609,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Page_Down:
+	case XKB_KEY_KP_Page_Down:
 		if (state->rightmost && state->rightmost->right) {
 			state->leftmost = state->rightmost->right;
 			state->rightmost = NULL;
@@ -613,6 +619,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Home:
+	case XKB_KEY_KP_Home:
 		if (state->selection == state->matches) {
 			if (state->cursor != 0) {
 				state->cursor = 0;
@@ -627,6 +634,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_End:
+	case XKB_KEY_KP_End:
 		if (state->cursor < len) {
 			state->cursor = len;
 			render_frame(state);
@@ -650,6 +658,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		}
 		break;
 	case XKB_KEY_Delete:
+	case XKB_KEY_KP_Delete:
 		if (state->cursor == len) {
 			return;
 		}
