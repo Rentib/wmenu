@@ -84,3 +84,64 @@ arrow keys, page up, page down, home, and end.
 
 *Escape*
 	Exit without selecting an item, returning failure.
+
+*Ctrl-Left*
+	Move cursor to the start of the current word.
+
+*Ctrl-Right*
+	Move cursor to the end of the current word.
+
+|[ *C-a*
+:[ Home
+
+|[ *C-b*
+:[ Left
+
+|[ *C-c*
+:[ Escape
+
+|[ *C-d*
+:[ Delete
+
+|[ *C-e*
+:[ End
+
+|[ *C-f*
+:[ Right
+
+|[ *C-g*
+:[ Escape
+
+|[ *C-h*
+:[ Backspace
+
+|[ *C-i*
+:[ Tab
+
+|[ *C-j*
+:[ Return
+
+|[ *C-J*
+:[ Shift-Return
+
+|[ *C-k*
+:[ Delete line right
+
+|[ *C-m*
+:[ Return
+
+|[ *C-M*
+:[ Shift-Return
+
+|[ *C-n*
+:[ Down
+
+|[ *C-p*
+:[ Up
+
+|[ *C-u*
+:[ Delete line left
+
+|[ *C-w*
+:[ Delete word left
+
