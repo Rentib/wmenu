@@ -394,6 +394,7 @@ void render_frame(struct menu_state *state) {
 	cairo_set_source_surface(shm, recorder, 0, 0);
 	cairo_paint(shm);
 
+	wl_surface_set_buffer_scale(state->surface, scale);
 	wl_surface_attach(state->surface, state->current->buffer, 0, 0);
 	wl_surface_damage(state->surface, 0, 0, state->width, state->height);
 	wl_surface_commit(state->surface);
@@ -410,8 +411,6 @@ static void surface_enter(void *data, struct wl_surface *surface,
 		struct wl_output *wl_output) {
 	struct menu_state *state = data;
 	state->output = wl_output_get_user_data(wl_output);
-	wl_surface_set_buffer_scale(state->surface, state->output->scale);
-	wl_surface_commit(state->surface);
 	render_frame(state);
 }
 
