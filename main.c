@@ -758,8 +758,9 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		if (!state->selection) {
 			return;
 		}
-		strncpy(state->text, state->selection->text, sizeof state->text);
-		state->cursor = strlen(state->text);
+		state->cursor = strnlen(state->selection->text, sizeof state->text - 1);
+		memcpy(state->text, state->selection->text, state->cursor);
+		state->text[state->cursor] = '\0';
 		match(state);
 		render_frame(state);
 		break;
