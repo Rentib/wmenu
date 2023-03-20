@@ -1,8 +1,8 @@
 # wmenu
 
 wmenu is an efficient dynamic menu for Sway and wlroots based Wayland
-compositors. It aims to provide a Wayland-native dmenu replacement which
-maintains the look and feel of dmenu.
+compositors. It provides a Wayland-native dmenu replacement which maintains the
+look and feel of dmenu.
 
 ## Installation
 
