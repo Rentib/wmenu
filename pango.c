@@ -66,7 +66,7 @@ void get_text_size(cairo_t *cairo, const char *font, int *width, int *height,
 
 int text_width(cairo_t *cairo, const char *font, const char *text) {
 	int text_width;
-	get_text_size(cairo, font, &text_width, NULL, NULL, 1, text);
+	get_text_size(cairo, font, &text_width, NULL, NULL, 1, "%s", text);
 	return text_width;
 }
 
