@@ -1166,6 +1166,7 @@ int main(int argc, char **argv) {
 
 	read_stdin(&state);
 	match(&state);
+	render_frame(&state);
 
 	struct pollfd fds[] = {
 		{ wl_display_get_fd(state.display), POLLIN },
