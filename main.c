@@ -411,7 +411,6 @@ static void surface_enter(void *data, struct wl_surface *surface,
 		struct wl_output *wl_output) {
 	struct menu_state *state = data;
 	state->output = wl_output_get_user_data(wl_output);
-	render_frame(state);
 }
 
 static const struct wl_surface_listener surface_listener = {
