@@ -110,7 +110,7 @@ int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 		int left_padding, int right_padding) {
 
 	int text_width, text_height;
-	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, "%s", str);
+	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, str);
 	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
 
 	if (background) {
@@ -122,7 +122,7 @@ int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 
 	cairo_move_to(cairo, x + left_padding, y + text_y);
 	cairo_set_source_u32(cairo, foreground);
-	pango_printf(cairo, state->font, 1, "%s", str);
+	pango_printf(cairo, state->font, 1, str);
 
 	return x + text_width + left_padding + right_padding;
 }
@@ -133,7 +133,7 @@ int render_horizontal_item(struct menu_state *state, cairo_t *cairo, const char 
 		int left_padding, int right_padding) {
 
 	int text_width, text_height;
-	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, "%s", str);
+	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, str);
 	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
 
 	if (x + left_padding + text_width > width) {
@@ -148,7 +148,7 @@ int render_horizontal_item(struct menu_state *state, cairo_t *cairo, const char 
 
 		cairo_move_to(cairo, x + left_padding, y + text_y);
 		cairo_set_source_u32(cairo, foreground);
-		pango_printf(cairo, state->font, 1, "%s", str);
+		pango_printf(cairo, state->font, 1, str);
 	}
 
 	return x + text_width + left_padding + right_padding;
@@ -160,7 +160,7 @@ void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *
 		int left_padding) {
 
 	int text_height;
-	get_text_size(cairo, state->font, NULL, &text_height, NULL, 1, "%s", str);
+	get_text_size(cairo, state->font, NULL, &text_height, NULL, 1, str);
 	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
 
 	if (background) {
@@ -172,7 +172,7 @@ void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *
 
 	cairo_move_to(cairo, x + left_padding, y + text_y);
 	cairo_set_source_u32(cairo, foreground);
-	pango_printf(cairo, state->font, 1, "%s", str);
+	pango_printf(cairo, state->font, 1, str);
 }
 
 void scroll_matches(struct menu_state *state) {

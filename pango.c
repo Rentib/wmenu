@@ -38,55 +38,25 @@ PangoLayout *get_pango_layout(cairo_t *cairo, const char *font,
 }
 
 void get_text_size(cairo_t *cairo, const char *font, int *width, int *height,
-		int *baseline, double scale, const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	// Add one since vsnprintf excludes null terminator.
-	int length = vsnprintf(NULL, 0, fmt, args) + 1;
-	va_end(args);
-
-	char *buf = malloc(length);
-	if (buf == NULL) {
-		return;
-	}
-	va_start(args, fmt);
-	vsnprintf(buf, length, fmt, args);
-	va_end(args);
-
-	PangoLayout *layout = get_pango_layout(cairo, font, buf, scale);
+		int *baseline, double scale, const char *text) {
+	PangoLayout *layout = get_pango_layout(cairo, font, text, scale);
 	pango_cairo_update_layout(cairo, layout);
 	pango_layout_get_pixel_size(layout, width, height);
 	if (baseline) {
 		*baseline = pango_layout_get_baseline(layout) / PANGO_SCALE;
 	}
-
 	g_object_unref(layout);
-	free(buf);
 }
 
 int text_width(cairo_t *cairo, const char *font, const char *text) {
 	int text_width;
-	get_text_size(cairo, font, &text_width, NULL, NULL, 1, "%s", text);
+	get_text_size(cairo, font, &text_width, NULL, NULL, 1, text);
 	return text_width;
 }
 
 void pango_printf(cairo_t *cairo, const char *font, double scale,
-		const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	// Add one since vsnprintf excludes null terminator.
-	int length = vsnprintf(NULL, 0, fmt, args) + 1;
-	va_end(args);
-
-	char *buf = malloc(length);
-	if (buf == NULL) {
-		return;
-	}
-	va_start(args, fmt);
-	vsnprintf(buf, length, fmt, args);
-	va_end(args);
-
-	PangoLayout *layout = get_pango_layout(cairo, font, buf, scale);
+		const char *text) {
+	PangoLayout *layout = get_pango_layout(cairo, font, text, scale);
 	cairo_font_options_t *fo = cairo_font_options_create();
 	cairo_get_font_options(cairo, fo);
 	pango_cairo_context_set_font_options(pango_layout_get_context(layout), fo);
@@ -94,5 +64,4 @@ void pango_printf(cairo_t *cairo, const char *font, double scale,
 	pango_cairo_update_layout(cairo, layout);
 	pango_cairo_show_layout(cairo, layout);
 	g_object_unref(layout);
-	free(buf);
 }
