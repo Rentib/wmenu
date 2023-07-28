@@ -43,7 +43,7 @@ struct menu_state {
 	struct wl_compositor *compositor;
 	struct wl_shm *shm;
 	struct wl_seat *seat;
-	struct wl_keyboard *keyboard;
+	struct wl_data_device_manager *data_device_manager;
 	struct zwlr_layer_shell_v1 *layer_shell;
 
 	struct wl_surface *surface;
@@ -52,6 +52,8 @@ struct menu_state {
 	struct xkb_context *xkb_context;
 	struct xkb_keymap *xkb_keymap;
 	struct xkb_state *xkb_state;
+
+	struct wl_data_offer *offer;
 
 	struct pool_buffer buffers[2];
 	struct pool_buffer *current;
@@ -564,6 +566,33 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 			}
 			render_frame(state);
 			return;
+		case XKB_KEY_Y:
+			// Paste clipboard
+			if (!state->offer) {
+				return;
+			}
+
+			int fds[2];
+			pipe(fds);
+			wl_data_offer_receive(state->offer, "text/plain", fds[1]);
+			close(fds[1]);
+
+			wl_display_roundtrip(state->display);
+
+			while (true) {
+				char buf[1024];
+				ssize_t n = read(fds[0], buf, sizeof(buf));
+				if (n <= 0) {
+					break;
+				}
+				insert(state, buf, n);
+			}
+			close(fds[0]);
+
+			wl_data_offer_destroy(state->offer);
+			state->offer = NULL;
+			render_frame(state);
+			return;
 		case XKB_KEY_Left:
 		case XKB_KEY_KP_Left:
 			// Move to beginning of word
@@ -838,14 +867,29 @@ static void seat_capabilities(void *data, struct wl_seat *seat,
 		enum wl_seat_capability caps) {
 	struct menu_state *state = data;
 	if (caps & WL_SEAT_CAPABILITY_KEYBOARD) {
-		state->keyboard = wl_seat_get_keyboard(seat);
-		wl_keyboard_add_listener(state->keyboard, &keyboard_listener, state);
+		struct wl_keyboard *keyboard = wl_seat_get_keyboard(seat);
+		wl_keyboard_add_listener(keyboard, &keyboard_listener, state);
 	}
 }
 
-const struct wl_seat_listener seat_listener = {
+static const struct wl_seat_listener seat_listener = {
 	.capabilities = seat_capabilities,
 	.name = noop,
+};
+
+static void data_device_selection(void *data, struct wl_data_device *data_device,
+		struct wl_data_offer *offer) {
+	struct menu_state *state = data;
+	state->offer = offer;
+}
+
+static const struct wl_data_device_listener data_device_listener = {
+	.data_offer = noop,
+	.enter = noop,
+	.leave = noop,
+	.motion = noop,
+	.drop = noop,
+	.selection = data_device_selection,
 };
 
 static void handle_global(void *data, struct wl_registry *registry,
@@ -857,9 +901,11 @@ static void handle_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		state->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
-		struct wl_seat *seat = wl_registry_bind(registry, name,
-				&wl_seat_interface, 4);
-		wl_seat_add_listener(seat, &seat_listener, state);
+		state->seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
+		wl_seat_add_listener(state->seat, &seat_listener, state);
+	} else if (strcmp(interface, wl_data_device_manager_interface.name) == 0) {
+		state->data_device_manager = wl_registry_bind(registry, name,
+				&wl_data_device_manager_interface, 3);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
 		state->layer_shell = wl_registry_bind(registry, name,
 				&zwlr_layer_shell_v1_interface, 1);
@@ -1016,8 +1062,15 @@ static void menu_init(struct menu_state *state) {
 	wl_registry_add_listener(registry, &registry_listener, state);
 	wl_display_roundtrip(state->display);
 	assert(state->compositor != NULL);
-	assert(state->layer_shell != NULL);
 	assert(state->shm != NULL);
+	assert(state->seat != NULL);
+	assert(state->data_device_manager != NULL);
+	assert(state->layer_shell != NULL);
+
+	// Get data device for seat
+	struct wl_data_device *data_device = wl_data_device_manager_get_data_device(
+			state->data_device_manager, state->seat);
+	wl_data_device_add_listener(data_device, &data_device_listener, state);
 
 	// Second roundtrip for xdg-output
 	wl_display_roundtrip(state->display);
