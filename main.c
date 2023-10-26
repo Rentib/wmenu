@@ -931,7 +931,7 @@ void insert(struct menu_state *state, const char *s, ssize_t n) {
 	}
 	memmove(state->text + state->cursor + n, state->text + state->cursor,
 			sizeof state->text - state->cursor - MAX(n, 0));
-	if (n > 0) {
+	if (n > 0 && s != NULL) {
 		memcpy(state->text + state->cursor, s, n);
 	}
 	state->cursor += n;
