@@ -938,12 +938,12 @@ void insert(struct menu_state *state, const char *s, ssize_t n) {
 	match(state);
 }
 
-char * fstrstr(struct menu_state *state, const char *s, const char *sub) {
+const char * fstrstr(struct menu_state *state, const char *s, const char *sub) {
 	size_t len;
 
 	for(len = strlen(sub); *s; s++)
 		if(!state->fstrncmp(s, sub, len))
-			return (char *)s;
+			return s;
 	return NULL;
 }
 
@@ -1116,12 +1116,12 @@ bool parse_color(const char *color, uint32_t *result) {
 	if (color[0] == '#') {
 		++color;
 	}
-	int len = strlen(color);
+	size_t len = strlen(color);
 	if ((len != 6 && len != 8) || !isxdigit(color[0]) || !isxdigit(color[1])) {
 		return false;
 	}
 	char *ptr;
-	uint32_t parsed = strtoul(color, &ptr, 16);
+	uint32_t parsed = (uint32_t)strtoul(color, &ptr, 16);
 	if (*ptr != '\0') {
 		return false;
 	}
@@ -1225,7 +1225,7 @@ int main(int argc, char **argv) {
 		{ wl_display_get_fd(state.display), POLLIN },
 		{ state.repeat_timer, POLLIN },
 	};
-	const int nfds = sizeof(fds) / sizeof(*fds);
+	const size_t nfds = sizeof(fds) / sizeof(*fds);
 
 	while (state.run) {
 		errno = 0;
