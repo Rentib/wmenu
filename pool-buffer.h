@@ -12,8 +12,8 @@ struct pool_buffer {
 	PangoContext *pango;
 	size_t size;
 	int32_t width, height, scale;
-	void *data;
 	bool busy;
+	void *data;
 };
 
 struct pool_buffer *get_next_buffer(struct wl_shm *shm,
