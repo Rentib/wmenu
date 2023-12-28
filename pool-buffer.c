@@ -68,19 +68,19 @@ static const struct wl_buffer_listener buffer_listener = {
 static struct pool_buffer *create_buffer(struct wl_shm *shm,
 		struct pool_buffer *buf, int32_t width, int32_t height,
 		int32_t scale, uint32_t format) {
-	uint32_t stride = width * scale * 4;
-	size_t size = stride * height * scale;
+	int32_t stride = width * scale * 4;
+	int32_t size = stride * height * scale;
 
 	int fd = create_shm_file(size);
 	assert(fd != -1);
-	void *data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	void *data = mmap(NULL, (size_t)size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, size);
 	buf->buffer = wl_shm_pool_create_buffer(pool, 0,
 			width * scale, height * scale, stride, format);
 	wl_shm_pool_destroy(pool);
 	close(fd);
 
-	buf->size = size;
+	buf->size = (size_t)size;
 	buf->width = width;
 	buf->height = height;
 	buf->scale = scale;
