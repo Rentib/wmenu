@@ -573,7 +573,10 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 			}
 
 			int fds[2];
-			pipe(fds);
+			if (pipe(fds) == -1) {
+				// Pipe failed
+				return;
+			}
 			wl_data_offer_receive(state->offer, "text/plain", fds[1]);
 			close(fds[1]);
 
