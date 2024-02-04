@@ -1,4 +1,4 @@
-scdoc_dep = dependency('scdoc', version: '>=1.9.2', native: true)
+scdoc_dep = dependency('scdoc', version: '>=1.9.2', native: true, required: false)
 
 if scdoc_dep.found()
 	scdoc = find_program(
