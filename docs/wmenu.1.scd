@@ -112,6 +112,9 @@ arrow keys, page up, page down, home, and end.
 |[ *C-g*
 :[ Escape
 
+|[ *C-[*
+:[ Escape
+
 |[ *C-h*
 :[ Backspace
 

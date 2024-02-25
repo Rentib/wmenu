@@ -525,6 +525,9 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		case XKB_KEY_g:
 			sym = XKB_KEY_Escape;
 			break;
+		case XKB_KEY_bracketleft:
+			sym = XKB_KEY_Escape;
+			break;
 		case XKB_KEY_h:
 			sym = XKB_KEY_BackSpace;
 			break;
@@ -641,9 +644,8 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		break;
 	case XKB_KEY_Left:
 	case XKB_KEY_KP_Left:
-		if (state->vertical) {
-			break;
-		}
+	case XKB_KEY_Up:
+	case XKB_KEY_KP_Up:
 		if (state->cursor && (!state->selection || !state->selection->left)) {
 			state->cursor = nextrune(state, -1);
 			render_frame(state);
@@ -660,48 +662,8 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		break;
 	case XKB_KEY_Right:
 	case XKB_KEY_KP_Right:
-		if (state->vertical) {
-			break;
-		}
-		if (state->cursor < len) {
-			state->cursor = nextrune(state, +1);
-			render_frame(state);
-		} else if (state->cursor == len) {
-			if (state->selection && state->selection->right) {
-				if (state->selection == state->rightmost) {
-					state->leftmost = state->selection->right;
-					state->rightmost = NULL;
-				}
-				state->selection = state->selection->right;
-				scroll_matches(state);
-				render_frame(state);
-			}
-		}
-		break;
-	case XKB_KEY_Up:
-	case XKB_KEY_KP_Up:
-		if (!state->vertical) {
-			break;
-		}
-		if (state->cursor && (!state->selection || !state->selection->left)) {
-			state->cursor = nextrune(state, -1);
-			render_frame(state);
-		}
-		if (state->selection && state->selection->left) {
-			if (state->selection == state->leftmost) {
-				state->rightmost = state->selection->left;
-				state->leftmost = NULL;
-			}
-			state->selection = state->selection->left;
-			scroll_matches(state);
-			render_frame(state);
-		}
-		break;
 	case XKB_KEY_Down:
 	case XKB_KEY_KP_Down:
-		if (!state->vertical) {
-			break;
-		}
 		if (state->cursor < len) {
 			state->cursor = nextrune(state, +1);
 			render_frame(state);
