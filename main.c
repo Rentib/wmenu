@@ -714,14 +714,14 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		break;
 	case XKB_KEY_Page_Up:
 	case XKB_KEY_KP_Page_Up:
-		if (menu->sel->page->prev) {
+		if (menu->sel && menu->sel->page->prev) {
 			menu->sel = menu->sel->page->prev->first;
 			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Page_Down:
 	case XKB_KEY_KP_Page_Down:
-		if (menu->sel->page->next) {
+		if (menu->sel && menu->sel->page->next) {
 			menu->sel = menu->sel->page->next->first;
 			render_frame(menu);
 		}
