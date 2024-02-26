@@ -236,7 +236,9 @@ static void match_items(struct menu *menu) {
 	}
 
 	page_items(menu);
-	menu->sel = menu->pages->first;
+	if (menu->pages) {
+		menu->sel = menu->pages->first;
+	}
 }
 
 static void insert(struct menu *menu, const char *s, ssize_t n) {
