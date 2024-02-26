@@ -22,17 +22,20 @@
 #include "pool-buffer.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 
-struct menu_item {
+// A menu item.
+struct item {
 	char *text;
 	int width;
-	struct menu_item *next;         // traverses all items
-	struct menu_item *left, *right; // traverses matching items
+	struct item *next;       // traverses all items
+	struct item *prev_match; // previous matching item
+	struct item *next_match; // next matching item
 	struct page *page;
 };
 
+// A page of menu items.
 struct page {
-	struct menu_item *first;
-	struct menu_item *last;
+	struct item *first;
+	struct item *last;
 	struct page *prev;
 	struct page *next;
 };
@@ -96,10 +99,10 @@ struct menu_state {
 	bool run;
 	bool failure;
 
-	struct menu_item *items;
-	struct menu_item *matchstart;
-	struct menu_item *matchend;
-	struct menu_item *selection;
+	struct item *items;
+	struct item *matchstart;
+	struct item *matchend;
+	struct item *selection;
 	struct page *pages;
 };
 
@@ -141,7 +144,7 @@ static void page_items(struct menu_state *state) {
 	// Make new pages
 	if (state->vertical) {
 		struct page *pages_end = NULL;
-		struct menu_item *item = state->matchstart;
+		struct item *item = state->matchstart;
 		while (item) {
 			struct page *page = calloc(1, sizeof(struct page));
 			page->first = item;
@@ -149,7 +152,7 @@ static void page_items(struct menu_state *state) {
 			for (int i = 1; item && i <= state->lines; i++) {
 				item->page = page;
 				page->last = item;
-				item = item->right;
+				item = item->next_match;
 			}
 			append_page(page, &state->pages, &pages_end);
 		}
@@ -159,7 +162,7 @@ static void page_items(struct menu_state *state) {
 			- state->left_arrow - state->right_arrow;
 
 		struct page *pages_end = NULL;
-		struct menu_item *item = state->matchstart;
+		struct item *item = state->matchstart;
 		while (item) {
 			struct page *page = calloc(1, sizeof(struct page));
 			page->first = item;
@@ -173,7 +176,7 @@ static void page_items(struct menu_state *state) {
 
 				item->page = page;
 				page->last = item;
-				item = item->right;
+				item = item->next_match;
 			}
 			append_page(page, &state->pages, &pages_end);
 		}
@@ -300,8 +303,8 @@ static void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 	if (state->vertical) {
 		// Draw matches vertically
 		int y = state->line_height;
-		struct menu_item *item;
-		for (item = state->selection->page->first; item != state->selection->page->last->right; item = item->right) {
+		struct item *item;
+		for (item = state->selection->page->first; item != state->selection->page->last->next_match; item = item->next_match) {
 			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
 			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
 			render_vertical_item(state, cairo, item->text,
@@ -322,8 +325,8 @@ static void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 		x += state->left_arrow;
 
 		// Draw matches horizontally
-		struct menu_item *item;
-		for (item = state->selection->page->first; item != state->selection->page->last->right; item = item->right) {
+		struct item *item;
+		for (item = state->selection->page->first; item != state->selection->page->last->next_match; item = item->next_match) {
 			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
 			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
 			x = render_horizontal_item(state, cairo, item->text,
@@ -632,8 +635,8 @@ static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_st
 	case XKB_KEY_KP_Left:
 	case XKB_KEY_Up:
 	case XKB_KEY_KP_Up:
-		if (state->selection && state->selection->left) {
-			state->selection = state->selection->left;
+		if (state->selection && state->selection->prev_match) {
+			state->selection = state->selection->prev_match;
 			render_frame(state);
 		} else if (state->cursor > 0) {
 			state->cursor = nextrune(state, -1);
@@ -647,8 +650,8 @@ static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_st
 		if (state->cursor < len) {
 			state->cursor = nextrune(state, +1);
 			render_frame(state);
-		} else if (state->selection && state->selection->right) {
-			state->selection = state->selection->right;
+		} else if (state->selection && state->selection->next_match) {
+			state->selection = state->selection->next_match;
 			render_frame(state);
 		}
 		break;
@@ -866,28 +869,28 @@ static const char * fstrstr(struct menu_state *state, const char *s, const char 
 	return NULL;
 }
 
-static void append_item(struct menu_item *item, struct menu_item **first, struct menu_item **last) {
+static void append_item(struct item *item, struct item **first, struct item **last) {
 	if (*last) {
-		(*last)->right = item;
+		(*last)->next_match = item;
 	} else {
 		*first = item;
 	}
-	item->left = *last;
-	item->right = NULL;
+	item->prev_match = *last;
+	item->next_match = NULL;
 	*last = item;
 }
 
 static void match(struct menu_state *state) {
-	struct menu_item *lexact = NULL, *exactend = NULL;
-	struct menu_item *lprefix = NULL, *prefixend = NULL;
-	struct menu_item *lsubstr  = NULL, *substrend = NULL;
+	struct item *lexact = NULL, *exactend = NULL;
+	struct item *lprefix = NULL, *prefixend = NULL;
+	struct item *lsubstr  = NULL, *substrend = NULL;
 	state->matchstart = NULL;
 	state->matchend = NULL;
 	state->selection = NULL;
 
 	size_t len = strlen(state->text);
 
-	struct menu_item *item;
+	struct item *item;
 	for (item = state->items; item; item = item->next) {
 		if (!state->fstrncmp(state->text, item->text, len + 1)) {
 			append_item(item, &lexact, &exactend);
@@ -904,8 +907,8 @@ static void match(struct menu_state *state) {
 	}
 	if (lprefix) {
 		if (state->matchend) {
-			state->matchend->right = lprefix;
-			lprefix->left = state->matchend;
+			state->matchend->next_match = lprefix;
+			lprefix->prev_match = state->matchend;
 		} else {
 			state->matchstart = lprefix;
 		}
@@ -913,8 +916,8 @@ static void match(struct menu_state *state) {
 	}
 	if (lsubstr) {
 		if (state->matchend) {
-			state->matchend->right = lsubstr;
-			lsubstr->left = state->matchend;
+			state->matchend->next_match = lsubstr;
+			lsubstr->prev_match = state->matchend;
 		} else {
 			state->matchstart = lsubstr;
 		}
@@ -935,7 +938,7 @@ static size_t nextrune(struct menu_state *state, int incr) {
 
 static void read_stdin(struct menu_state *state) {
 	char buf[sizeof state->text], *p;
-	struct menu_item *item, **end;
+	struct item *item, **end;
 
 	for(end = &state->items; fgets(buf, sizeof buf, stdin); *end = item, end = &item->next) {
 		if((p = strchr(buf, '\n'))) {
@@ -947,7 +950,7 @@ static void read_stdin(struct menu_state *state) {
 		}
 
 		item->text = strdup(buf);
-		item->next = item->left = item->right = NULL;
+		item->next = item->prev_match = item->next_match = NULL;
 
 		cairo_t *cairo = state->current->cairo;
 		item->width = text_width(cairo, state->font, item->text);
