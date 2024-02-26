@@ -99,11 +99,11 @@ struct menu {
 	bool run;
 	bool failure;
 
-	struct item *items;
-	struct item *matchstart;
-	struct item *matchend;
-	struct item *selection;
-	struct page *pages;
+	struct item *items;       // list of all items
+	struct item *matches;     // list of matching items
+	struct item *matches_end; // last matching item
+	struct item *sel;         // selected item
+	struct page *pages;       // list of pages
 };
 
 static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
@@ -137,14 +137,14 @@ static void page_items(struct menu *menu) {
 		free(page);
 	}
 
-	if (!menu->matchstart) {
+	if (!menu->matches) {
 		return;
 	}
 
 	// Make new pages
 	if (menu->vertical) {
 		struct page *pages_end = NULL;
-		struct item *item = menu->matchstart;
+		struct item *item = menu->matches;
 		while (item) {
 			struct page *page = calloc(1, sizeof(struct page));
 			page->first = item;
@@ -162,7 +162,7 @@ static void page_items(struct menu *menu) {
 			- menu->left_arrow - menu->right_arrow;
 
 		struct page *pages_end = NULL;
-		struct item *item = menu->matchstart;
+		struct item *item = menu->matches;
 		while (item) {
 			struct page *page = calloc(1, sizeof(struct page));
 			page->first = item;
@@ -292,7 +292,7 @@ static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 		cairo_fill(cairo);
 	}
 
-	if (!menu->matchstart) {
+	if (!menu->matches) {
 		return;
 	}
 
@@ -300,9 +300,9 @@ static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 		// Draw matches vertically
 		int y = menu->line_height;
 		struct item *item;
-		for (item = menu->selection->page->first; item != menu->selection->page->last->next_match; item = item->next_match) {
-			uint32_t bg_color = menu->selection == item ? menu->selectionbg : menu->background;
-			uint32_t fg_color = menu->selection == item ? menu->selectionfg : menu->foreground;
+		for (item = menu->sel->page->first; item != menu->sel->page->last->next_match; item = item->next_match) {
+			uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
+			uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
 			render_vertical_item(menu, cairo, item->text,
 				x, y, width, menu->line_height,
 				fg_color, bg_color, padding);
@@ -322,9 +322,9 @@ static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 
 		// Draw matches horizontally
 		struct item *item;
-		for (item = menu->selection->page->first; item != menu->selection->page->last->next_match; item = item->next_match) {
-			uint32_t bg_color = menu->selection == item ? menu->selectionbg : menu->background;
-			uint32_t fg_color = menu->selection == item ? menu->selectionfg : menu->foreground;
+		for (item = menu->sel->page->first; item != menu->sel->page->last->next_match; item = item->next_match) {
+			uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
+			uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
 			x = render_horizontal_item(menu, cairo, item->text,
 				x, 0, width - menu->right_arrow, menu->line_height,
 				fg_color, bg_color, padding, padding);
@@ -332,13 +332,13 @@ static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 		}
 
 		// Draw left scroll indicator if necessary
-		if (menu->selection->page->prev) {
+		if (menu->sel->page->prev) {
 			cairo_move_to(cairo, left_arrow_pos, 0);
 			pango_printf(cairo, menu->font, 1, "<");
 		}
 
 		// Draw right scroll indicator if necessary
-		if (menu->selection->page->next) {
+		if (menu->sel->page->next) {
 			cairo_move_to(cairo, width - menu->right_arrow + padding, 0);
 			pango_printf(cairo, menu->font, 1, ">");
 		}
@@ -618,8 +618,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			fflush(stdout);
 			menu->run = false;
 		} else {
-			char *text = menu->selection ? menu->selection->text
-				: menu->text;
+			char *text = menu->sel ? menu->sel->text : menu->text;
 			puts(text);
 			fflush(stdout);
 			if (!ctrl) {
@@ -631,8 +630,8 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 	case XKB_KEY_KP_Left:
 	case XKB_KEY_Up:
 	case XKB_KEY_KP_Up:
-		if (menu->selection && menu->selection->prev_match) {
-			menu->selection = menu->selection->prev_match;
+		if (menu->sel && menu->sel->prev_match) {
+			menu->sel = menu->sel->prev_match;
 			render_frame(menu);
 		} else if (menu->cursor > 0) {
 			menu->cursor = nextrune(menu, -1);
@@ -646,32 +645,32 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		if (menu->cursor < len) {
 			menu->cursor = nextrune(menu, +1);
 			render_frame(menu);
-		} else if (menu->selection && menu->selection->next_match) {
-			menu->selection = menu->selection->next_match;
+		} else if (menu->sel && menu->sel->next_match) {
+			menu->sel = menu->sel->next_match;
 			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Page_Up:
 	case XKB_KEY_KP_Page_Up:
-		if (menu->selection->page->prev) {
-			menu->selection = menu->selection->page->prev->first;
+		if (menu->sel->page->prev) {
+			menu->sel = menu->sel->page->prev->first;
 			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Page_Down:
 	case XKB_KEY_KP_Page_Down:
-		if (menu->selection->page->next) {
-			menu->selection = menu->selection->page->next->first;
+		if (menu->sel->page->next) {
+			menu->sel = menu->sel->page->next->first;
 			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Home:
 	case XKB_KEY_KP_Home:
-		if (menu->selection == menu->matchstart) {
+		if (menu->sel == menu->matches) {
 			menu->cursor = 0;
 			render_frame(menu);
 		} else {
-			menu->selection = menu->matchstart;
+			menu->sel = menu->matches;
 			render_frame(menu);
 		}
 		break;
@@ -681,7 +680,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			menu->cursor = len;
 			render_frame(menu);
 		} else {
-			menu->selection = menu->matchend;
+			menu->sel = menu->matches_end;
 			render_frame(menu);
 		}
 		break;
@@ -701,11 +700,11 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		render_frame(menu);
 		break;
 	case XKB_KEY_Tab:
-		if (!menu->selection) {
+		if (!menu->sel) {
 			return;
 		}
-		menu->cursor = strnlen(menu->selection->text, sizeof menu->text - 1);
-		memcpy(menu->text, menu->selection->text, menu->cursor);
+		menu->cursor = strnlen(menu->sel->text, sizeof menu->text - 1);
+		memcpy(menu->text, menu->sel->text, menu->cursor);
 		menu->text[menu->cursor] = '\0';
 		match(menu);
 		render_frame(menu);
@@ -880,9 +879,9 @@ static void match(struct menu *menu) {
 	struct item *lexact = NULL, *exactend = NULL;
 	struct item *lprefix = NULL, *prefixend = NULL;
 	struct item *lsubstr  = NULL, *substrend = NULL;
-	menu->matchstart = NULL;
-	menu->matchend = NULL;
-	menu->selection = NULL;
+	menu->matches = NULL;
+	menu->matches_end = NULL;
+	menu->sel = NULL;
 
 	size_t len = strlen(menu->text);
 
@@ -898,30 +897,30 @@ static void match(struct menu *menu) {
 	}
 
 	if (lexact) {
-		menu->matchstart = lexact;
-		menu->matchend = exactend;
+		menu->matches = lexact;
+		menu->matches_end = exactend;
 	}
 	if (lprefix) {
-		if (menu->matchend) {
-			menu->matchend->next_match = lprefix;
-			lprefix->prev_match = menu->matchend;
+		if (menu->matches_end) {
+			menu->matches_end->next_match = lprefix;
+			lprefix->prev_match = menu->matches_end;
 		} else {
-			menu->matchstart = lprefix;
+			menu->matches = lprefix;
 		}
-		menu->matchend = prefixend;
+		menu->matches_end = prefixend;
 	}
 	if (lsubstr) {
-		if (menu->matchend) {
-			menu->matchend->next_match = lsubstr;
-			lsubstr->prev_match = menu->matchend;
+		if (menu->matches_end) {
+			menu->matches_end->next_match = lsubstr;
+			lsubstr->prev_match = menu->matches_end;
 		} else {
-			menu->matchstart = lsubstr;
+			menu->matches = lsubstr;
 		}
-		menu->matchend = substrend;
+		menu->matches_end = substrend;
 	}
 
 	page_items(menu);
-	menu->selection = menu->pages->first;
+	menu->sel = menu->pages->first;
 }
 
 static size_t nextrune(struct menu *menu, int incr) {
