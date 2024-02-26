@@ -183,79 +183,47 @@ void scroll_matches(struct menu_state *state) {
 		return;
 	}
 
+	if (state->leftmost == NULL && state->rightmost == NULL) {
+		state->leftmost = state->matches;
+	}
+
 	if (state->vertical) {
 		if (state->leftmost == NULL) {
-			state->leftmost = state->matches;
-			if (state->rightmost == NULL) {
-				int offs = 0;
-				struct menu_item *item;
-				for (item = state->matches; item->left != state->selection; item = item->right) {
-					offs += state->line_height;
-					if (offs >= state->height) {
-						state->leftmost = item->left;
-						offs = state->height - offs;
-					}
-				}
-			} else {
-				int offs = 0;
-				struct menu_item *item;
-				for (item = state->rightmost; item; item = item->left) {
-					offs += state->line_height;
-					if (offs >= state->height) {
-						state->leftmost = item->right;
-						break;
-					}
-				}
+			struct menu_item *item = state->rightmost;
+			for (int i = 1; item->left && i < state->lines; i++) {
+				item = item->left;
 			}
-		}
-		if (state->rightmost == NULL) {
-			state->rightmost = state->matches;
-			int offs = 0;
-			struct menu_item *item;
-			for (item = state->leftmost; item; item = item->right) {
-				offs += state->line_height;
-				if (offs >= state->height) {
-					break;
-				}
-				state->rightmost = item;
+			state->leftmost = item;
+		} else if (state->rightmost == NULL) {
+			struct menu_item *item = state->leftmost;
+			for (int i = 1; item->right && i < state->lines; i++) {
+				item = item->right;
 			}
+			state->rightmost = item;
 		}
 	} else {
 		// Calculate available space
-		int padding = state->padding;
-		int width = state->width - state->inputw - state->promptw
+		int max_width = state->width - state->inputw - state->promptw
 			- state->left_arrow - state->right_arrow;
+
 		if (state->leftmost == NULL) {
-			state->leftmost = state->matches;
-			if (state->rightmost == NULL) {
-				int offs = 0;
-				struct menu_item *item;
-				for (item = state->matches; item->left != state->selection; item = item->right) {
-					offs += item->width + 2 * padding;
-					if (offs >= width) {
-						state->leftmost = item->left;
-						offs = width - offs;
-					}
+			state->leftmost = state->rightmost;
+			int total_width = 0;
+			struct menu_item *item;
+			for (item = state->rightmost; item; item = item->left) {
+				total_width += item->width + 2 * state->padding;
+				if (total_width > max_width) {
+					break;
 				}
-			} else {
-				int offs = 0;
-				struct menu_item *item;
-				for (item = state->rightmost; item; item = item->left) {
-					offs += item->width + 2 * padding;
-					if (offs >= width) {
-						state->leftmost = item->right;
-						break;
-					}
-				}
+				state->leftmost = item;
 			}
-		}
-		if (state->rightmost == NULL) {
-			state->rightmost = state->matches;
-			int offs = 0;
+		} else if (state->rightmost == NULL) {
+			state->rightmost = state->leftmost;
+			int total_width = 0;
 			struct menu_item *item;
 			for (item = state->leftmost; item; item = item->right) {
-				offs += item->width + 2 * padding;
-				if (offs >= width) {
+				total_width += item->width + 2 * state->padding;
+				if (total_width > max_width) {
 					break;
 				}
 				state->rightmost = item;
