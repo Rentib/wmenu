@@ -29,15 +29,15 @@ struct item {
 	struct item *next;       // traverses all items
 	struct item *prev_match; // previous matching item
 	struct item *next_match; // next matching item
-	struct page *page;
+	struct page *page;       // the page holding this item
 };
 
 // A page of menu items.
 struct page {
-	struct item *first;
-	struct item *last;
-	struct page *prev;
-	struct page *next;
+	struct item *first; // first item in the page
+	struct item *last;  // last item in the page
+	struct page *prev;  // previous page
+	struct page *next;  // next page
 };
 
 struct output {
