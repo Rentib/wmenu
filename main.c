@@ -106,18 +106,6 @@ struct menu {
 	struct page *pages;       // list of pages
 };
 
-static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
-	cairo_set_source_rgba(cairo,
-			(color >> (3*8) & 0xFF) / 255.0,
-			(color >> (2*8) & 0xFF) / 255.0,
-			(color >> (1*8) & 0xFF) / 255.0,
-			(color >> (0*8) & 0xFF) / 255.0);
-}
-
-static void insert(struct menu *menu, const char *s, ssize_t n);
-static void match(struct menu *menu);
-static size_t nextrune(struct menu *menu, int incr);
-
 static void append_page(struct page *page, struct page **first, struct page **last) {
 	if (*last) {
 		(*last)->next = page;
@@ -181,6 +169,102 @@ static void page_items(struct menu *menu) {
 			append_page(page, &menu->pages, &pages_end);
 		}
 	}
+}
+
+static const char * fstrstr(struct menu *menu, const char *s, const char *sub) {
+	for (size_t len = strlen(sub); *s; s++) {
+		if (!menu->strncmp(s, sub, len)) {
+			return s;
+		}
+	}
+	return NULL;
+}
+
+static void append_item(struct item *item, struct item **first, struct item **last) {
+	if (*last) {
+		(*last)->next_match = item;
+	} else {
+		*first = item;
+	}
+	item->prev_match = *last;
+	item->next_match = NULL;
+	*last = item;
+}
+
+static void match_items(struct menu *menu) {
+	struct item *lexact = NULL, *exactend = NULL;
+	struct item *lprefix = NULL, *prefixend = NULL;
+	struct item *lsubstr  = NULL, *substrend = NULL;
+	menu->matches = NULL;
+	menu->matches_end = NULL;
+	menu->sel = NULL;
+
+	size_t len = strlen(menu->text);
+
+	struct item *item;
+	for (item = menu->items; item; item = item->next) {
+		if (!menu->strncmp(menu->text, item->text, len + 1)) {
+			append_item(item, &lexact, &exactend);
+		} else if (!menu->strncmp(menu->text, item->text, len)) {
+			append_item(item, &lprefix, &prefixend);
+		} else if (fstrstr(menu, item->text, menu->text)) {
+			append_item(item, &lsubstr, &substrend);
+		}
+	}
+
+	if (lexact) {
+		menu->matches = lexact;
+		menu->matches_end = exactend;
+	}
+	if (lprefix) {
+		if (menu->matches_end) {
+			menu->matches_end->next_match = lprefix;
+			lprefix->prev_match = menu->matches_end;
+		} else {
+			menu->matches = lprefix;
+		}
+		menu->matches_end = prefixend;
+	}
+	if (lsubstr) {
+		if (menu->matches_end) {
+			menu->matches_end->next_match = lsubstr;
+			lsubstr->prev_match = menu->matches_end;
+		} else {
+			menu->matches = lsubstr;
+		}
+		menu->matches_end = substrend;
+	}
+
+	page_items(menu);
+	menu->sel = menu->pages->first;
+}
+
+static void insert(struct menu *menu, const char *s, ssize_t n) {
+	if (strlen(menu->text) + n > sizeof menu->text - 1) {
+		return;
+	}
+	memmove(menu->text + menu->cursor + n, menu->text + menu->cursor,
+			sizeof menu->text - menu->cursor - MAX(n, 0));
+	if (n > 0 && s != NULL) {
+		memcpy(menu->text + menu->cursor, s, n);
+	}
+	menu->cursor += n;
+}
+
+static size_t nextrune(struct menu *menu, int incr) {
+	size_t n, len;
+
+	len = strlen(menu->text);
+	for(n = menu->cursor + incr; n < len && (menu->text[n] & 0xc0) == 0x80; n += incr);
+	return n;
+}
+
+static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
+	cairo_set_source_rgba(cairo,
+			(color >> (3*8) & 0xFF) / 255.0,
+			(color >> (2*8) & 0xFF) / 255.0,
+			(color >> (1*8) & 0xFF) / 255.0,
+			(color >> (0*8) & 0xFF) / 255.0);
 }
 
 static int render_text(struct menu *menu, cairo_t *cairo, const char *str,
@@ -530,12 +614,13 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		case XKB_KEY_k:
 			// Delete right
 			menu->text[menu->cursor] = '\0';
-			match(menu);
+			match_items(menu);
 			render_frame(menu);
 			return;
 		case XKB_KEY_u:
 			// Delete left
 			insert(menu, NULL, 0 - menu->cursor);
+			match_items(menu);
 			render_frame(menu);
 			return;
 		case XKB_KEY_w:
@@ -546,6 +631,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] != ' ') {
 				insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
 			}
+			match_items(menu);
 			render_frame(menu);
 			return;
 		case XKB_KEY_Y:
@@ -576,6 +662,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 
 			wl_data_offer_destroy(menu->offer);
 			menu->offer = NULL;
+			match_items(menu);
 			render_frame(menu);
 			return;
 		case XKB_KEY_Left:
@@ -687,6 +774,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 	case XKB_KEY_BackSpace:
 		if (menu->cursor > 0) {
 			insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
+			match_items(menu);
 			render_frame(menu);
 		}
 		break;
@@ -697,6 +785,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		}
 		menu->cursor = nextrune(menu, +1);
 		insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
+		match_items(menu);
 		render_frame(menu);
 		break;
 	case XKB_KEY_Tab:
@@ -706,7 +795,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		menu->cursor = strnlen(menu->sel->text, sizeof menu->text - 1);
 		memcpy(menu->text, menu->sel->text, menu->cursor);
 		menu->text[menu->cursor] = '\0';
-		match(menu);
+		match_items(menu);
 		render_frame(menu);
 		break;
 	case XKB_KEY_Escape:
@@ -716,6 +805,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 	default:
 		if (xkb_keysym_to_utf8(sym, buf, 8)) {
 			insert(menu, buf, strnlen(buf, 8));
+			match_items(menu);
 			render_frame(menu);
 		}
 	}
@@ -841,95 +931,6 @@ static const struct wl_registry_listener registry_listener = {
 	.global = handle_global,
 	.global_remove = noop,
 };
-
-static void insert(struct menu *menu, const char *s, ssize_t n) {
-	if (strlen(menu->text) + n > sizeof menu->text - 1) {
-		return;
-	}
-	memmove(menu->text + menu->cursor + n, menu->text + menu->cursor,
-			sizeof menu->text - menu->cursor - MAX(n, 0));
-	if (n > 0 && s != NULL) {
-		memcpy(menu->text + menu->cursor, s, n);
-	}
-	menu->cursor += n;
-	match(menu);
-}
-
-static const char * fstrstr(struct menu *menu, const char *s, const char *sub) {
-	for (size_t len = strlen(sub); *s; s++) {
-		if (!menu->strncmp(s, sub, len)) {
-			return s;
-		}
-	}
-	return NULL;
-}
-
-static void append_item(struct item *item, struct item **first, struct item **last) {
-	if (*last) {
-		(*last)->next_match = item;
-	} else {
-		*first = item;
-	}
-	item->prev_match = *last;
-	item->next_match = NULL;
-	*last = item;
-}
-
-static void match(struct menu *menu) {
-	struct item *lexact = NULL, *exactend = NULL;
-	struct item *lprefix = NULL, *prefixend = NULL;
-	struct item *lsubstr  = NULL, *substrend = NULL;
-	menu->matches = NULL;
-	menu->matches_end = NULL;
-	menu->sel = NULL;
-
-	size_t len = strlen(menu->text);
-
-	struct item *item;
-	for (item = menu->items; item; item = item->next) {
-		if (!menu->strncmp(menu->text, item->text, len + 1)) {
-			append_item(item, &lexact, &exactend);
-		} else if (!menu->strncmp(menu->text, item->text, len)) {
-			append_item(item, &lprefix, &prefixend);
-		} else if (fstrstr(menu, item->text, menu->text)) {
-			append_item(item, &lsubstr, &substrend);
-		}
-	}
-
-	if (lexact) {
-		menu->matches = lexact;
-		menu->matches_end = exactend;
-	}
-	if (lprefix) {
-		if (menu->matches_end) {
-			menu->matches_end->next_match = lprefix;
-			lprefix->prev_match = menu->matches_end;
-		} else {
-			menu->matches = lprefix;
-		}
-		menu->matches_end = prefixend;
-	}
-	if (lsubstr) {
-		if (menu->matches_end) {
-			menu->matches_end->next_match = lsubstr;
-			lsubstr->prev_match = menu->matches_end;
-		} else {
-			menu->matches = lsubstr;
-		}
-		menu->matches_end = substrend;
-	}
-
-	page_items(menu);
-	menu->sel = menu->pages->first;
-}
-
-static size_t nextrune(struct menu *menu, int incr) {
-	size_t n, len;
-
-	len = strlen(menu->text);
-	for(n = menu->cursor + incr; n < len && (menu->text[n] & 0xc0) == 0x80; n += incr);
-	return n;
-}
 
 static void read_stdin(struct menu *menu) {
 	char buf[sizeof menu->text], *p;
@@ -1139,7 +1140,7 @@ int main(int argc, char **argv) {
 	render_frame(&menu);
 
 	read_stdin(&menu);
-	match(&menu);
+	match_items(&menu);
 	render_frame(&menu);
 
 	struct pollfd fds[] = {
