@@ -41,12 +41,12 @@ struct page {
 };
 
 struct output {
-	struct menu_state *menu;
+	struct menu *menu;
 	struct wl_output *output;
 	int32_t scale;
 };
 
-struct menu_state {
+struct menu {
 	struct output *output;
 	char *output_name;
 
@@ -78,7 +78,7 @@ struct menu_state {
 	int left_arrow, right_arrow;
 
 	bool bottom;
-	int (*fstrncmp)(const char *, const char *, size_t);
+	int (*strncmp)(const char *, const char *, size_t);
 	char *font;
 	bool vertical;
 	int lines;
@@ -114,9 +114,9 @@ static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
 			(color >> (0*8) & 0xFF) / 255.0);
 }
 
-static void insert(struct menu_state *state, const char *s, ssize_t n);
-static void match(struct menu_state *state);
-static size_t nextrune(struct menu_state *state, int incr);
+static void insert(struct menu *menu, const char *s, ssize_t n);
+static void match(struct menu *menu);
+static size_t nextrune(struct menu *menu, int incr);
 
 static void append_page(struct page *page, struct page **first, struct page **last) {
 	if (*last) {
@@ -129,47 +129,47 @@ static void append_page(struct page *page, struct page **first, struct page **la
 	*last = page;
 }
 
-static void page_items(struct menu_state *state) {
+static void page_items(struct menu *menu) {
 	// Free existing pages
-	while (state->pages != NULL) {
-		struct page *page = state->pages;
-		state->pages = state->pages->next;
+	while (menu->pages != NULL) {
+		struct page *page = menu->pages;
+		menu->pages = menu->pages->next;
 		free(page);
 	}
 
-	if (!state->matchstart) {
+	if (!menu->matchstart) {
 		return;
 	}
 
 	// Make new pages
-	if (state->vertical) {
+	if (menu->vertical) {
 		struct page *pages_end = NULL;
-		struct item *item = state->matchstart;
+		struct item *item = menu->matchstart;
 		while (item) {
 			struct page *page = calloc(1, sizeof(struct page));
 			page->first = item;
 
-			for (int i = 1; item && i <= state->lines; i++) {
+			for (int i = 1; item && i <= menu->lines; i++) {
 				item->page = page;
 				page->last = item;
 				item = item->next_match;
 			}
-			append_page(page, &state->pages, &pages_end);
+			append_page(page, &menu->pages, &pages_end);
 		}
 	} else {
 		// Calculate available space
-		int max_width = state->width - state->inputw - state->promptw
-			- state->left_arrow - state->right_arrow;
+		int max_width = menu->width - menu->inputw - menu->promptw
+			- menu->left_arrow - menu->right_arrow;
 
 		struct page *pages_end = NULL;
-		struct item *item = state->matchstart;
+		struct item *item = menu->matchstart;
 		while (item) {
 			struct page *page = calloc(1, sizeof(struct page));
 			page->first = item;
 
 			int total_width = 0;
 			while (item) {
-				total_width += item->width + 2 * state->padding;
+				total_width += item->width + 2 * menu->padding;
 				if (total_width > max_width) {
 					break;
 				}
@@ -178,19 +178,19 @@ static void page_items(struct menu_state *state) {
 				page->last = item;
 				item = item->next_match;
 			}
-			append_page(page, &state->pages, &pages_end);
+			append_page(page, &menu->pages, &pages_end);
 		}
 	}
 }
 
-static int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
+static int render_text(struct menu *menu, cairo_t *cairo, const char *str,
 		int x, int y, int width, int height,
 		uint32_t foreground, uint32_t background,
 		int left_padding, int right_padding) {
 
 	int text_width, text_height;
-	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, str);
-	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
+	get_text_size(cairo, menu->font, &text_width, &text_height, NULL, 1, str);
+	int text_y = (menu->line_height / 2.0) - (text_height / 2.0);
 
 	if (background) {
 		int bg_width = text_width + left_padding + right_padding;
@@ -201,19 +201,19 @@ static int render_text(struct menu_state *state, cairo_t *cairo, const char *str
 
 	cairo_move_to(cairo, x + left_padding, y + text_y);
 	cairo_set_source_u32(cairo, foreground);
-	pango_printf(cairo, state->font, 1, str);
+	pango_printf(cairo, menu->font, 1, str);
 
 	return x + text_width + left_padding + right_padding;
 }
 
-static int render_horizontal_item(struct menu_state *state, cairo_t *cairo, const char *str,
+static int render_horizontal_item(struct menu *menu, cairo_t *cairo, const char *str,
 		int x, int y, int width, int height,
 		uint32_t foreground, uint32_t background,
 		int left_padding, int right_padding) {
 
 	int text_width, text_height;
-	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, str);
-	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
+	get_text_size(cairo, menu->font, &text_width, &text_height, NULL, 1, str);
+	int text_y = (menu->line_height / 2.0) - (text_height / 2.0);
 
 	if (background) {
 		int bg_width = text_width + left_padding + right_padding;
@@ -224,22 +224,22 @@ static int render_horizontal_item(struct menu_state *state, cairo_t *cairo, cons
 
 	cairo_move_to(cairo, x + left_padding, y + text_y);
 	cairo_set_source_u32(cairo, foreground);
-	pango_printf(cairo, state->font, 1, str);
+	pango_printf(cairo, menu->font, 1, str);
 
 	return x + text_width + left_padding + right_padding;
 }
 
-static void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *str,
+static void render_vertical_item(struct menu *menu, cairo_t *cairo, const char *str,
 		int x, int y, int width, int height,
 		uint32_t foreground, uint32_t background,
 		int left_padding) {
 
 	int text_height;
-	get_text_size(cairo, state->font, NULL, &text_height, NULL, 1, str);
-	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
+	get_text_size(cairo, menu->font, NULL, &text_height, NULL, 1, str);
+	int text_y = (menu->line_height / 2.0) - (text_height / 2.0);
 
 	if (background) {
-		int bg_width = state->width - x;
+		int bg_width = menu->width - x;
 		cairo_set_source_u32(cairo, background);
 		cairo_rectangle(cairo, x, y, bg_width, height);
 		cairo_fill(cairo);
@@ -247,105 +247,105 @@ static void render_vertical_item(struct menu_state *state, cairo_t *cairo, const
 
 	cairo_move_to(cairo, x + left_padding, y + text_y);
 	cairo_set_source_u32(cairo, foreground);
-	pango_printf(cairo, state->font, 1, str);
+	pango_printf(cairo, menu->font, 1, str);
 }
 
-static void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
-	int width = state->width;
-	int padding = state->padding;
+static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
+	int width = menu->width;
+	int padding = menu->padding;
 
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
-	cairo_set_source_u32(cairo, state->background);
+	cairo_set_source_u32(cairo, menu->background);
 	cairo_paint(cairo);
 
 	int x = 0;
 
 	// Draw prompt
-	if (state->prompt) {
-		state->promptw = render_text(state, cairo, state->prompt,
-				0, 0, state->width, state->line_height,
-				state->promptfg, state->promptbg,
+	if (menu->prompt) {
+		menu->promptw = render_text(menu, cairo, menu->prompt,
+				0, 0, menu->width, menu->line_height,
+				menu->promptfg, menu->promptbg,
 				padding, padding/2);
-		x += state->promptw;
+		x += menu->promptw;
 	}
 
 	// Draw background
-	cairo_set_source_u32(cairo, state->background);
-	cairo_rectangle(cairo, x, 0, 300, state->height);
+	cairo_set_source_u32(cairo, menu->background);
+	cairo_rectangle(cairo, x, 0, 300, menu->height);
 	cairo_fill(cairo);
 
 	// Draw input
-	render_text(state, cairo, state->text,
-			x, 0, state->width, state->line_height,
-			state->foreground, 0, padding, padding);
+	render_text(menu, cairo, menu->text,
+			x, 0, menu->width, menu->line_height,
+			menu->foreground, 0, padding, padding);
 
 	// Draw cursor
 	{
 		int cursor_width = 2;
 		int cursor_margin = 2;
 		int cursor_pos = x + padding
-			+ text_width(cairo, state->font, state->text)
-			- text_width(cairo, state->font, &state->text[state->cursor])
+			+ text_width(cairo, menu->font, menu->text)
+			- text_width(cairo, menu->font, &menu->text[menu->cursor])
 			- cursor_width / 2;
 		cairo_rectangle(cairo, cursor_pos, cursor_margin, cursor_width,
-				state->line_height - 2 * cursor_margin);
+				menu->line_height - 2 * cursor_margin);
 		cairo_fill(cairo);
 	}
 
-	if (!state->matchstart) {
+	if (!menu->matchstart) {
 		return;
 	}
 
-	if (state->vertical) {
+	if (menu->vertical) {
 		// Draw matches vertically
-		int y = state->line_height;
+		int y = menu->line_height;
 		struct item *item;
-		for (item = state->selection->page->first; item != state->selection->page->last->next_match; item = item->next_match) {
-			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
-			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
-			render_vertical_item(state, cairo, item->text,
-				x, y, width, state->line_height,
+		for (item = menu->selection->page->first; item != menu->selection->page->last->next_match; item = item->next_match) {
+			uint32_t bg_color = menu->selection == item ? menu->selectionbg : menu->background;
+			uint32_t fg_color = menu->selection == item ? menu->selectionfg : menu->foreground;
+			render_vertical_item(menu, cairo, item->text,
+				x, y, width, menu->line_height,
 				fg_color, bg_color, padding);
-			y += state->line_height;
+			y += menu->line_height;
 		}
 	} else {
 		// Leave room for input
-		x += state->inputw;
+		x += menu->inputw;
 
 		// Calculate scroll indicator widths
-		state->left_arrow = text_width(cairo, state->font, "<") + 2 * padding;
-		state->right_arrow = text_width(cairo, state->font, ">") + 2 * padding;
+		menu->left_arrow = text_width(cairo, menu->font, "<") + 2 * padding;
+		menu->right_arrow = text_width(cairo, menu->font, ">") + 2 * padding;
 
 		// Remember scroll indicator position
 		int left_arrow_pos = x + padding;
-		x += state->left_arrow;
+		x += menu->left_arrow;
 
 		// Draw matches horizontally
 		struct item *item;
-		for (item = state->selection->page->first; item != state->selection->page->last->next_match; item = item->next_match) {
-			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
-			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
-			x = render_horizontal_item(state, cairo, item->text,
-				x, 0, width - state->right_arrow, state->line_height,
+		for (item = menu->selection->page->first; item != menu->selection->page->last->next_match; item = item->next_match) {
+			uint32_t bg_color = menu->selection == item ? menu->selectionbg : menu->background;
+			uint32_t fg_color = menu->selection == item ? menu->selectionfg : menu->foreground;
+			x = render_horizontal_item(menu, cairo, item->text,
+				x, 0, width - menu->right_arrow, menu->line_height,
 				fg_color, bg_color, padding, padding);
 			// TODO: Make sure render_horizontal_item doesn't return -1
 		}
 
 		// Draw left scroll indicator if necessary
-		if (state->selection->page->prev) {
+		if (menu->selection->page->prev) {
 			cairo_move_to(cairo, left_arrow_pos, 0);
-			pango_printf(cairo, state->font, 1, "<");
+			pango_printf(cairo, menu->font, 1, "<");
 		}
 
 		// Draw right scroll indicator if necessary
-		if (state->selection->page->next) {
-			cairo_move_to(cairo, width - state->right_arrow + padding, 0);
-			pango_printf(cairo, state->font, 1, ">");
+		if (menu->selection->page->next) {
+			cairo_move_to(cairo, width - menu->right_arrow + padding, 0);
+			pango_printf(cairo, menu->font, 1, ">");
 		}
 	}
 }
 
-static void render_frame(struct menu_state *state) {
+static void render_frame(struct menu *menu) {
 	cairo_surface_t *recorder = cairo_recording_surface_create(
 			CAIRO_CONTENT_COLOR_ALPHA, NULL);
 	cairo_t *cairo = cairo_create(recorder);
@@ -358,16 +358,16 @@ static void render_frame(struct menu_state *state) {
 	cairo_paint(cairo);
 	cairo_restore(cairo);
 
-	render_to_cairo(state, cairo);
+	render_to_cairo(menu, cairo);
 
-	int scale = state->output ? state->output->scale : 1;
-	state->current = get_next_buffer(state->shm,
-		state->buffers, state->width, state->height, scale);
-	if (!state->current) {
+	int scale = menu->output ? menu->output->scale : 1;
+	menu->current = get_next_buffer(menu->shm,
+		menu->buffers, menu->width, menu->height, scale);
+	if (!menu->current) {
 		goto cleanup;
 	}
 
-	cairo_t *shm = state->current->cairo;
+	cairo_t *shm = menu->current->cairo;
 	cairo_save(shm);
 	cairo_set_operator(shm, CAIRO_OPERATOR_CLEAR);
 	cairo_paint(shm);
@@ -375,10 +375,10 @@ static void render_frame(struct menu_state *state) {
 	cairo_set_source_surface(shm, recorder, 0, 0);
 	cairo_paint(shm);
 
-	wl_surface_set_buffer_scale(state->surface, scale);
-	wl_surface_attach(state->surface, state->current->buffer, 0, 0);
-	wl_surface_damage(state->surface, 0, 0, state->width, state->height);
-	wl_surface_commit(state->surface);
+	wl_surface_set_buffer_scale(menu->surface, scale);
+	wl_surface_attach(menu->surface, menu->current->buffer, 0, 0);
+	wl_surface_damage(menu->surface, 0, 0, menu->width, menu->height);
+	wl_surface_commit(menu->surface);
 
 cleanup:
 	cairo_destroy(cairo);
@@ -390,8 +390,8 @@ static void noop() {
 
 static void surface_enter(void *data, struct wl_surface *surface,
 		struct wl_output *wl_output) {
-	struct menu_state *state = data;
-	state->output = wl_output_get_user_data(wl_output);
+	struct menu *menu = data;
+	menu->output = wl_output_get_user_data(wl_output);
 }
 
 static const struct wl_surface_listener surface_listener = {
@@ -402,16 +402,16 @@ static const struct wl_surface_listener surface_listener = {
 static void layer_surface_configure(void *data,
 		struct zwlr_layer_surface_v1 *surface,
 		uint32_t serial, uint32_t width, uint32_t height) {
-	struct menu_state *state = data;
-	state->width = width;
-	state->height = height;
+	struct menu *menu = data;
+	menu->width = width;
+	menu->height = height;
 	zwlr_layer_surface_v1_ack_configure(surface, serial);
 }
 
 static void layer_surface_closed(void *data,
 		struct zwlr_layer_surface_v1 *surface) {
-	struct menu_state *state = data;
-	state->run = false;
+	struct menu *menu = data;
+	menu->run = false;
 }
 
 static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
@@ -426,10 +426,10 @@ static void output_scale(void *data, struct wl_output *wl_output, int32_t factor
 
 static void output_name(void *data, struct wl_output *wl_output, const char *name) {
 	struct output *output = data;
-	struct menu_state *state = output->menu;
-	char *outname = state->output_name;
-	if (!state->output && outname && strcmp(outname, name) == 0) {
-		state->output = output;
+	struct menu *menu = output->menu;
+	char *outname = menu->output_name;
+	if (!menu->output && outname && strcmp(outname, name) == 0) {
+		menu->output = output;
 	}
 }
 
@@ -444,41 +444,41 @@ static const struct wl_output_listener output_listener = {
 
 static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t format, int32_t fd, uint32_t size) {
-	struct menu_state *state = data;
+	struct menu *menu = data;
 	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
 		close(fd);
-		state->run = false;
-		state->failure = true;
+		menu->run = false;
+		menu->failure = true;
 		return;
 	}
 	char *map_shm = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
 	if (map_shm == MAP_FAILED) {
 		close(fd);
-		state->run = false;
-		state->failure = true;
+		menu->run = false;
+		menu->failure = true;
 		return;
 	}
-	state->xkb_keymap = xkb_keymap_new_from_string(state->xkb_context,
+	menu->xkb_keymap = xkb_keymap_new_from_string(menu->xkb_context,
 		map_shm, XKB_KEYMAP_FORMAT_TEXT_V1, 0);
 	munmap(map_shm, size);
 	close(fd);
-	state->xkb_state = xkb_state_new(state->xkb_keymap);
+	menu->xkb_state = xkb_state_new(menu->xkb_keymap);
 }
 
-static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
+static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		xkb_keysym_t sym) {
 	if (key_state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		return;
 	}
 
-	bool ctrl = xkb_state_mod_name_is_active(state->xkb_state,
+	bool ctrl = xkb_state_mod_name_is_active(menu->xkb_state,
 			XKB_MOD_NAME_CTRL,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
-	bool shift = xkb_state_mod_name_is_active(state->xkb_state,
+	bool shift = xkb_state_mod_name_is_active(menu->xkb_state,
 			XKB_MOD_NAME_SHIFT,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
 
-	size_t len = strlen(state->text);
+	size_t len = strlen(menu->text);
 
 	if (ctrl) {
 		// Emacs-style line editing bindings
@@ -529,28 +529,28 @@ static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_st
 
 		case XKB_KEY_k:
 			// Delete right
-			state->text[state->cursor] = '\0';
-			match(state);
-			render_frame(state);
+			menu->text[menu->cursor] = '\0';
+			match(menu);
+			render_frame(menu);
 			return;
 		case XKB_KEY_u:
 			// Delete left
-			insert(state, NULL, 0 - state->cursor);
-			render_frame(state);
+			insert(menu, NULL, 0 - menu->cursor);
+			render_frame(menu);
 			return;
 		case XKB_KEY_w:
 			// Delete word
-			while (state->cursor > 0 && state->text[nextrune(state, -1)] == ' ') {
-				insert(state, NULL, nextrune(state, -1) - state->cursor);
+			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] == ' ') {
+				insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
 			}
-			while (state->cursor > 0 && state->text[nextrune(state, -1)] != ' ') {
-				insert(state, NULL, nextrune(state, -1) - state->cursor);
+			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] != ' ') {
+				insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
 			}
-			render_frame(state);
+			render_frame(menu);
 			return;
 		case XKB_KEY_Y:
 			// Paste clipboard
-			if (!state->offer) {
+			if (!menu->offer) {
 				return;
 			}
 
@@ -559,10 +559,10 @@ static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_st
 				// Pipe failed
 				return;
 			}
-			wl_data_offer_receive(state->offer, "text/plain", fds[1]);
+			wl_data_offer_receive(menu->offer, "text/plain", fds[1]);
 			close(fds[1]);
 
-			wl_display_roundtrip(state->display);
+			wl_display_roundtrip(menu->display);
 
 			while (true) {
 				char buf[1024];
@@ -570,35 +570,35 @@ static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_st
 				if (n <= 0) {
 					break;
 				}
-				insert(state, buf, n);
+				insert(menu, buf, n);
 			}
 			close(fds[0]);
 
-			wl_data_offer_destroy(state->offer);
-			state->offer = NULL;
-			render_frame(state);
+			wl_data_offer_destroy(menu->offer);
+			menu->offer = NULL;
+			render_frame(menu);
 			return;
 		case XKB_KEY_Left:
 		case XKB_KEY_KP_Left:
 			// Move to beginning of word
-			while (state->cursor > 0 && state->text[nextrune(state, -1)] == ' ') {
-				state->cursor = nextrune(state, -1);
+			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] == ' ') {
+				menu->cursor = nextrune(menu, -1);
 			}
-			while (state->cursor > 0 && state->text[nextrune(state, -1)] != ' ') {
-				state->cursor = nextrune(state, -1);
+			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] != ' ') {
+				menu->cursor = nextrune(menu, -1);
 			}
-			render_frame(state);
+			render_frame(menu);
 			return;
 		case XKB_KEY_Right:
 		case XKB_KEY_KP_Right:
 			// Move to end of word
-			while (state->cursor < len && state->text[state->cursor] == ' ') {
-				state->cursor = nextrune(state, +1);
+			while (menu->cursor < len && menu->text[menu->cursor] == ' ') {
+				menu->cursor = nextrune(menu, +1);
 			}
-			while (state->cursor < len && state->text[state->cursor] != ' ') {
-				state->cursor = nextrune(state, +1);
+			while (menu->cursor < len && menu->text[menu->cursor] != ' ') {
+				menu->cursor = nextrune(menu, +1);
 			}
-			render_frame(state);
+			render_frame(menu);
 			return;
 
 		case XKB_KEY_Return:
@@ -614,16 +614,16 @@ static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_st
 	case XKB_KEY_Return:
 	case XKB_KEY_KP_Enter:
 		if (shift) {
-			puts(state->text);
+			puts(menu->text);
 			fflush(stdout);
-			state->run = false;
+			menu->run = false;
 		} else {
-			char *text = state->selection ? state->selection->text
-				: state->text;
+			char *text = menu->selection ? menu->selection->text
+				: menu->text;
 			puts(text);
 			fflush(stdout);
 			if (!ctrl) {
-				state->run = false;
+				menu->run = false;
 			}
 		}
 		break;
@@ -631,135 +631,135 @@ static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_st
 	case XKB_KEY_KP_Left:
 	case XKB_KEY_Up:
 	case XKB_KEY_KP_Up:
-		if (state->selection && state->selection->prev_match) {
-			state->selection = state->selection->prev_match;
-			render_frame(state);
-		} else if (state->cursor > 0) {
-			state->cursor = nextrune(state, -1);
-			render_frame(state);
+		if (menu->selection && menu->selection->prev_match) {
+			menu->selection = menu->selection->prev_match;
+			render_frame(menu);
+		} else if (menu->cursor > 0) {
+			menu->cursor = nextrune(menu, -1);
+			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Right:
 	case XKB_KEY_KP_Right:
 	case XKB_KEY_Down:
 	case XKB_KEY_KP_Down:
-		if (state->cursor < len) {
-			state->cursor = nextrune(state, +1);
-			render_frame(state);
-		} else if (state->selection && state->selection->next_match) {
-			state->selection = state->selection->next_match;
-			render_frame(state);
+		if (menu->cursor < len) {
+			menu->cursor = nextrune(menu, +1);
+			render_frame(menu);
+		} else if (menu->selection && menu->selection->next_match) {
+			menu->selection = menu->selection->next_match;
+			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Page_Up:
 	case XKB_KEY_KP_Page_Up:
-		if (state->selection->page->prev) {
-			state->selection = state->selection->page->prev->first;
-			render_frame(state);
+		if (menu->selection->page->prev) {
+			menu->selection = menu->selection->page->prev->first;
+			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Page_Down:
 	case XKB_KEY_KP_Page_Down:
-		if (state->selection->page->next) {
-			state->selection = state->selection->page->next->first;
-			render_frame(state);
+		if (menu->selection->page->next) {
+			menu->selection = menu->selection->page->next->first;
+			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Home:
 	case XKB_KEY_KP_Home:
-		if (state->selection == state->matchstart) {
-			state->cursor = 0;
-			render_frame(state);
+		if (menu->selection == menu->matchstart) {
+			menu->cursor = 0;
+			render_frame(menu);
 		} else {
-			state->selection = state->matchstart;
-			render_frame(state);
+			menu->selection = menu->matchstart;
+			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_End:
 	case XKB_KEY_KP_End:
-		if (state->cursor < len) {
-			state->cursor = len;
-			render_frame(state);
+		if (menu->cursor < len) {
+			menu->cursor = len;
+			render_frame(menu);
 		} else {
-			state->selection = state->matchend;
-			render_frame(state);
+			menu->selection = menu->matchend;
+			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_BackSpace:
-		if (state->cursor > 0) {
-			insert(state, NULL, nextrune(state, -1) - state->cursor);
-			render_frame(state);
+		if (menu->cursor > 0) {
+			insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
+			render_frame(menu);
 		}
 		break;
 	case XKB_KEY_Delete:
 	case XKB_KEY_KP_Delete:
-		if (state->cursor == len) {
+		if (menu->cursor == len) {
 			return;
 		}
-		state->cursor = nextrune(state, +1);
-		insert(state, NULL, nextrune(state, -1) - state->cursor);
-		render_frame(state);
+		menu->cursor = nextrune(menu, +1);
+		insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
+		render_frame(menu);
 		break;
 	case XKB_KEY_Tab:
-		if (!state->selection) {
+		if (!menu->selection) {
 			return;
 		}
-		state->cursor = strnlen(state->selection->text, sizeof state->text - 1);
-		memcpy(state->text, state->selection->text, state->cursor);
-		state->text[state->cursor] = '\0';
-		match(state);
-		render_frame(state);
+		menu->cursor = strnlen(menu->selection->text, sizeof menu->text - 1);
+		memcpy(menu->text, menu->selection->text, menu->cursor);
+		menu->text[menu->cursor] = '\0';
+		match(menu);
+		render_frame(menu);
 		break;
 	case XKB_KEY_Escape:
-		state->failure = true;
-		state->run = false;
+		menu->failure = true;
+		menu->run = false;
 		break;
 	default:
 		if (xkb_keysym_to_utf8(sym, buf, 8)) {
-			insert(state, buf, strnlen(buf, 8));
-			render_frame(state);
+			insert(menu, buf, strnlen(buf, 8));
+			render_frame(menu);
 		}
 	}
 }
 
-static void keyboard_repeat(struct menu_state *state) {
-	keypress(state, state->repeat_key_state, state->repeat_sym);
+static void keyboard_repeat(struct menu *menu) {
+	keypress(menu, menu->repeat_key_state, menu->repeat_sym);
 	struct itimerspec spec = { 0 };
-	spec.it_value.tv_sec = state->repeat_period / 1000;
-	spec.it_value.tv_nsec = (state->repeat_period % 1000) * 1000000l;
-	timerfd_settime(state->repeat_timer, 0, &spec, NULL);
+	spec.it_value.tv_sec = menu->repeat_period / 1000;
+	spec.it_value.tv_nsec = (menu->repeat_period % 1000) * 1000000l;
+	timerfd_settime(menu->repeat_timer, 0, &spec, NULL);
 }
 
 static void keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, uint32_t time, uint32_t key, uint32_t _key_state) {
-	struct menu_state *state = data;
+	struct menu *menu = data;
 
 	enum wl_keyboard_key_state key_state = _key_state;
-	xkb_keysym_t sym = xkb_state_key_get_one_sym(state->xkb_state, key + 8);
-	keypress(state, key_state, sym);
+	xkb_keysym_t sym = xkb_state_key_get_one_sym(menu->xkb_state, key + 8);
+	keypress(menu, key_state, sym);
 
-	if (key_state == WL_KEYBOARD_KEY_STATE_PRESSED && state->repeat_period >= 0) {
-		state->repeat_key_state = key_state;
-		state->repeat_sym = sym;
+	if (key_state == WL_KEYBOARD_KEY_STATE_PRESSED && menu->repeat_period >= 0) {
+		menu->repeat_key_state = key_state;
+		menu->repeat_sym = sym;
 
 		struct itimerspec spec = { 0 };
-		spec.it_value.tv_sec = state->repeat_delay / 1000;
-		spec.it_value.tv_nsec = (state->repeat_delay % 1000) * 1000000l;
-		timerfd_settime(state->repeat_timer, 0, &spec, NULL);
+		spec.it_value.tv_sec = menu->repeat_delay / 1000;
+		spec.it_value.tv_nsec = (menu->repeat_delay % 1000) * 1000000l;
+		timerfd_settime(menu->repeat_timer, 0, &spec, NULL);
 	} else if (key_state == WL_KEYBOARD_KEY_STATE_RELEASED) {
 		struct itimerspec spec = { 0 };
-		timerfd_settime(state->repeat_timer, 0, &spec, NULL);
+		timerfd_settime(menu->repeat_timer, 0, &spec, NULL);
 	}
 }
 
 static void keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard,
 		int32_t rate, int32_t delay) {
-	struct menu_state *state = data;
-	state->repeat_delay = delay;
+	struct menu *menu = data;
+	menu->repeat_delay = delay;
 	if (rate > 0) {
-		state->repeat_period = 1000 / rate;
+		menu->repeat_period = 1000 / rate;
 	} else {
-		state->repeat_period = -1;
+		menu->repeat_period = -1;
 	}
 }
 
@@ -767,8 +767,8 @@ static void keyboard_modifiers(void *data, struct wl_keyboard *keyboard,
 		uint32_t serial, uint32_t mods_depressed,
 		uint32_t mods_latched, uint32_t mods_locked,
 		uint32_t group) {
-	struct menu_state *state = data;
-	xkb_state_update_mask(state->xkb_state, mods_depressed, mods_latched,
+	struct menu *menu = data;
+	xkb_state_update_mask(menu->xkb_state, mods_depressed, mods_latched,
 			mods_locked, 0, 0, group);
 }
 
@@ -783,10 +783,10 @@ static const struct wl_keyboard_listener keyboard_listener = {
 
 static void seat_capabilities(void *data, struct wl_seat *seat,
 		enum wl_seat_capability caps) {
-	struct menu_state *state = data;
+	struct menu *menu = data;
 	if (caps & WL_SEAT_CAPABILITY_KEYBOARD) {
 		struct wl_keyboard *keyboard = wl_seat_get_keyboard(seat);
-		wl_keyboard_add_listener(keyboard, &keyboard_listener, state);
+		wl_keyboard_add_listener(keyboard, &keyboard_listener, menu);
 	}
 }
 
@@ -797,8 +797,8 @@ static const struct wl_seat_listener seat_listener = {
 
 static void data_device_selection(void *data, struct wl_data_device *data_device,
 		struct wl_data_offer *offer) {
-	struct menu_state *state = data;
-	state->offer = offer;
+	struct menu *menu = data;
+	menu->offer = offer;
 }
 
 static const struct wl_data_device_listener data_device_listener = {
@@ -812,26 +812,26 @@ static const struct wl_data_device_listener data_device_listener = {
 
 static void handle_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *interface, uint32_t version) {
-	struct menu_state *state = data;
+	struct menu *menu = data;
 	if (strcmp(interface, wl_compositor_interface.name) == 0) {
-		state->compositor = wl_registry_bind(registry, name,
+		menu->compositor = wl_registry_bind(registry, name,
 				&wl_compositor_interface, 4);
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
-		state->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
+		menu->shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
-		state->seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
-		wl_seat_add_listener(state->seat, &seat_listener, state);
+		menu->seat = wl_registry_bind(registry, name, &wl_seat_interface, 4);
+		wl_seat_add_listener(menu->seat, &seat_listener, menu);
 	} else if (strcmp(interface, wl_data_device_manager_interface.name) == 0) {
-		state->data_device_manager = wl_registry_bind(registry, name,
+		menu->data_device_manager = wl_registry_bind(registry, name,
 				&wl_data_device_manager_interface, 3);
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-		state->layer_shell = wl_registry_bind(registry, name,
+		menu->layer_shell = wl_registry_bind(registry, name,
 				&zwlr_layer_shell_v1_interface, 1);
 	} else if (strcmp(interface, wl_output_interface.name) == 0) {
 		struct output *output = calloc(1, sizeof(struct output));
 		output->output = wl_registry_bind(registry, name,
 				&wl_output_interface, 4);
-		output->menu = state;
+		output->menu = menu;
 		output->scale = 1;
 		wl_output_set_user_data(output->output, output);
 		wl_output_add_listener(output->output, &output_listener, output);
@@ -843,25 +843,25 @@ static const struct wl_registry_listener registry_listener = {
 	.global_remove = noop,
 };
 
-static void insert(struct menu_state *state, const char *s, ssize_t n) {
-	if (strlen(state->text) + n > sizeof state->text - 1) {
+static void insert(struct menu *menu, const char *s, ssize_t n) {
+	if (strlen(menu->text) + n > sizeof menu->text - 1) {
 		return;
 	}
-	memmove(state->text + state->cursor + n, state->text + state->cursor,
-			sizeof state->text - state->cursor - MAX(n, 0));
+	memmove(menu->text + menu->cursor + n, menu->text + menu->cursor,
+			sizeof menu->text - menu->cursor - MAX(n, 0));
 	if (n > 0 && s != NULL) {
-		memcpy(state->text + state->cursor, s, n);
+		memcpy(menu->text + menu->cursor, s, n);
 	}
-	state->cursor += n;
-	match(state);
+	menu->cursor += n;
+	match(menu);
 }
 
-static const char * fstrstr(struct menu_state *state, const char *s, const char *sub) {
-	size_t len;
-
-	for(len = strlen(sub); *s; s++)
-		if(!state->fstrncmp(s, sub, len))
+static const char * fstrstr(struct menu *menu, const char *s, const char *sub) {
+	for (size_t len = strlen(sub); *s; s++) {
+		if (!menu->strncmp(s, sub, len)) {
 			return s;
+		}
+	}
 	return NULL;
 }
 
@@ -876,67 +876,67 @@ static void append_item(struct item *item, struct item **first, struct item **la
 	*last = item;
 }
 
-static void match(struct menu_state *state) {
+static void match(struct menu *menu) {
 	struct item *lexact = NULL, *exactend = NULL;
 	struct item *lprefix = NULL, *prefixend = NULL;
 	struct item *lsubstr  = NULL, *substrend = NULL;
-	state->matchstart = NULL;
-	state->matchend = NULL;
-	state->selection = NULL;
+	menu->matchstart = NULL;
+	menu->matchend = NULL;
+	menu->selection = NULL;
 
-	size_t len = strlen(state->text);
+	size_t len = strlen(menu->text);
 
 	struct item *item;
-	for (item = state->items; item; item = item->next) {
-		if (!state->fstrncmp(state->text, item->text, len + 1)) {
+	for (item = menu->items; item; item = item->next) {
+		if (!menu->strncmp(menu->text, item->text, len + 1)) {
 			append_item(item, &lexact, &exactend);
-		} else if (!state->fstrncmp(state->text, item->text, len)) {
+		} else if (!menu->strncmp(menu->text, item->text, len)) {
 			append_item(item, &lprefix, &prefixend);
-		} else if (fstrstr(state, item->text, state->text)) {
+		} else if (fstrstr(menu, item->text, menu->text)) {
 			append_item(item, &lsubstr, &substrend);
 		}
 	}
 
 	if (lexact) {
-		state->matchstart = lexact;
-		state->matchend = exactend;
+		menu->matchstart = lexact;
+		menu->matchend = exactend;
 	}
 	if (lprefix) {
-		if (state->matchend) {
-			state->matchend->next_match = lprefix;
-			lprefix->prev_match = state->matchend;
+		if (menu->matchend) {
+			menu->matchend->next_match = lprefix;
+			lprefix->prev_match = menu->matchend;
 		} else {
-			state->matchstart = lprefix;
+			menu->matchstart = lprefix;
 		}
-		state->matchend = prefixend;
+		menu->matchend = prefixend;
 	}
 	if (lsubstr) {
-		if (state->matchend) {
-			state->matchend->next_match = lsubstr;
-			lsubstr->prev_match = state->matchend;
+		if (menu->matchend) {
+			menu->matchend->next_match = lsubstr;
+			lsubstr->prev_match = menu->matchend;
 		} else {
-			state->matchstart = lsubstr;
+			menu->matchstart = lsubstr;
 		}
-		state->matchend = substrend;
+		menu->matchend = substrend;
 	}
 
-	page_items(state);
-	state->selection = state->pages->first;
+	page_items(menu);
+	menu->selection = menu->pages->first;
 }
 
-static size_t nextrune(struct menu_state *state, int incr) {
+static size_t nextrune(struct menu *menu, int incr) {
 	size_t n, len;
 
-	len = strlen(state->text);
-	for(n = state->cursor + incr; n < len && (state->text[n] & 0xc0) == 0x80; n += incr);
+	len = strlen(menu->text);
+	for(n = menu->cursor + incr; n < len && (menu->text[n] & 0xc0) == 0x80; n += incr);
 	return n;
 }
 
-static void read_stdin(struct menu_state *state) {
-	char buf[sizeof state->text], *p;
+static void read_stdin(struct menu *menu) {
+	char buf[sizeof menu->text], *p;
 	struct item *item, **end;
 
-	for(end = &state->items; fgets(buf, sizeof buf, stdin); *end = item, end = &item->next) {
+	for(end = &menu->items; fgets(buf, sizeof buf, stdin); *end = item, end = &item->next) {
 		if((p = strchr(buf, '\n'))) {
 			*p = '\0';
 		}
@@ -948,90 +948,90 @@ static void read_stdin(struct menu_state *state) {
 		item->text = strdup(buf);
 		item->next = item->prev_match = item->next_match = NULL;
 
-		cairo_t *cairo = state->current->cairo;
-		item->width = text_width(cairo, state->font, item->text);
-		if (item->width > state->inputw) {
-			state->inputw = item->width;
+		cairo_t *cairo = menu->current->cairo;
+		item->width = text_width(cairo, menu->font, item->text);
+		if (item->width > menu->inputw) {
+			menu->inputw = item->width;
 		}
 	}
 }
 
-static void menu_init(struct menu_state *state) {
-	int height = get_font_height(state->font);
-	state->line_height = height + 3;
-	state->height = state->line_height;
-	if (state->vertical) {
-		state->height += state->height * state->lines;
+static void menu_init(struct menu *menu) {
+	int height = get_font_height(menu->font);
+	menu->line_height = height + 3;
+	menu->height = menu->line_height;
+	if (menu->vertical) {
+		menu->height += menu->height * menu->lines;
 	}
-	state->padding = height / 2;
+	menu->padding = height / 2;
 
-	state->display = wl_display_connect(NULL);
-	if (!state->display) {
+	menu->display = wl_display_connect(NULL);
+	if (!menu->display) {
 		fprintf(stderr, "wl_display_connect: %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
-	state->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	if (!state->xkb_context) {
+	menu->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	if (!menu->xkb_context) {
 		fprintf(stderr, "xkb_context_new: %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
-	state->repeat_timer = timerfd_create(CLOCK_MONOTONIC, 0);
-	assert(state->repeat_timer >= 0);
+	menu->repeat_timer = timerfd_create(CLOCK_MONOTONIC, 0);
+	assert(menu->repeat_timer >= 0);
 
-	struct wl_registry *registry = wl_display_get_registry(state->display);
-	wl_registry_add_listener(registry, &registry_listener, state);
-	wl_display_roundtrip(state->display);
-	assert(state->compositor != NULL);
-	assert(state->shm != NULL);
-	assert(state->seat != NULL);
-	assert(state->data_device_manager != NULL);
-	assert(state->layer_shell != NULL);
+	struct wl_registry *registry = wl_display_get_registry(menu->display);
+	wl_registry_add_listener(registry, &registry_listener, menu);
+	wl_display_roundtrip(menu->display);
+	assert(menu->compositor != NULL);
+	assert(menu->shm != NULL);
+	assert(menu->seat != NULL);
+	assert(menu->data_device_manager != NULL);
+	assert(menu->layer_shell != NULL);
 
 	// Get data device for seat
 	struct wl_data_device *data_device = wl_data_device_manager_get_data_device(
-			state->data_device_manager, state->seat);
-	wl_data_device_add_listener(data_device, &data_device_listener, state);
+			menu->data_device_manager, menu->seat);
+	wl_data_device_add_listener(data_device, &data_device_listener, menu);
 
 	// Second roundtrip for xdg-output
-	wl_display_roundtrip(state->display);
+	wl_display_roundtrip(menu->display);
 
-	if (state->output_name && !state->output) {
-		fprintf(stderr, "Output %s not found\n", state->output_name);
+	if (menu->output_name && !menu->output) {
+		fprintf(stderr, "Output %s not found\n", menu->output_name);
 		exit(EXIT_FAILURE);
 	}
 }
 
-static void menu_create_surface(struct menu_state *state) {
-	state->surface = wl_compositor_create_surface(state->compositor);
-	wl_surface_add_listener(state->surface, &surface_listener, state);
-	state->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-		state->layer_shell,
-		state->surface,
+static void menu_create_surface(struct menu *menu) {
+	menu->surface = wl_compositor_create_surface(menu->compositor);
+	wl_surface_add_listener(menu->surface, &surface_listener, menu);
+	menu->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
+		menu->layer_shell,
+		menu->surface,
 		NULL,
 		ZWLR_LAYER_SHELL_V1_LAYER_TOP,
 		"menu"
 	);
-	assert(state->layer_surface != NULL);
+	assert(menu->layer_surface != NULL);
 
 	uint32_t anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
 		ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-	if (state->bottom) {
+	if (menu->bottom) {
 		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
 	} else {
 		anchor |= ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
 	}
 
-	zwlr_layer_surface_v1_set_anchor(state->layer_surface, anchor);
-	zwlr_layer_surface_v1_set_size(state->layer_surface, 0, state->height);
-	zwlr_layer_surface_v1_set_exclusive_zone(state->layer_surface, -1);
-	zwlr_layer_surface_v1_set_keyboard_interactivity(state->layer_surface, true);
-	zwlr_layer_surface_v1_add_listener(state->layer_surface,
-		&layer_surface_listener, state);
+	zwlr_layer_surface_v1_set_anchor(menu->layer_surface, anchor);
+	zwlr_layer_surface_v1_set_size(menu->layer_surface, 0, menu->height);
+	zwlr_layer_surface_v1_set_exclusive_zone(menu->layer_surface, -1);
+	zwlr_layer_surface_v1_set_keyboard_interactivity(menu->layer_surface, true);
+	zwlr_layer_surface_v1_add_listener(menu->layer_surface,
+		&layer_surface_listener, menu);
 
-	wl_surface_commit(state->surface);
-	wl_display_roundtrip(state->display);
+	wl_surface_commit(menu->surface);
+	wl_display_roundtrip(menu->display);
 }
 
 static bool parse_color(const char *color, uint32_t *result) {
@@ -1052,8 +1052,8 @@ static bool parse_color(const char *color, uint32_t *result) {
 }
 
 int main(int argc, char **argv) {
-	struct menu_state state = {
-		.fstrncmp = strncmp,
+	struct menu menu = {
+		.strncmp = strncmp,
 		.font = "monospace 10",
 		.vertical = false,
 		.background = 0x222222ff,
@@ -1073,54 +1073,54 @@ int main(int argc, char **argv) {
 	while ((opt = getopt(argc, argv, "bhivf:l:o:p:N:n:M:m:S:s:")) != -1) {
 		switch (opt) {
 		case 'b':
-			state.bottom = true;
+			menu.bottom = true;
 			break;
 		case 'i':
-			state.fstrncmp = strncasecmp;
+			menu.strncmp = strncasecmp;
 			break;
 		case 'v':
 			puts("wmenu " VERSION);
 			exit(EXIT_SUCCESS);
 		case 'f':
-			state.font = optarg;
+			menu.font = optarg;
 			break;
 		case 'l':
-			state.vertical = true;
-			state.lines = atoi(optarg);
+			menu.vertical = true;
+			menu.lines = atoi(optarg);
 			break;
 		case 'o':
-			state.output_name = optarg;
+			menu.output_name = optarg;
 			break;
 		case 'p':
-			state.prompt = optarg;
+			menu.prompt = optarg;
 			break;
 		case 'N':
-			if (!parse_color(optarg, &state.background)) {
+			if (!parse_color(optarg, &menu.background)) {
 				fprintf(stderr, "Invalid background color: %s", optarg);
 			}
 			break;
 		case 'n':
-			if (!parse_color(optarg, &state.foreground)) {
+			if (!parse_color(optarg, &menu.foreground)) {
 				fprintf(stderr, "Invalid foreground color: %s", optarg);
 			}
 			break;
 		case 'M':
-			if (!parse_color(optarg, &state.promptbg)) {
+			if (!parse_color(optarg, &menu.promptbg)) {
 				fprintf(stderr, "Invalid prompt background color: %s", optarg);
 			}
 			break;
 		case 'm':
-			if (!parse_color(optarg, &state.promptfg)) {
+			if (!parse_color(optarg, &menu.promptfg)) {
 				fprintf(stderr, "Invalid prompt foreground color: %s", optarg);
 			}
 			break;
 		case 'S':
-			if (!parse_color(optarg, &state.selectionbg)) {
+			if (!parse_color(optarg, &menu.selectionbg)) {
 				fprintf(stderr, "Invalid selection background color: %s", optarg);
 			}
 			break;
 		case 's':
-			if (!parse_color(optarg, &state.selectionfg)) {
+			if (!parse_color(optarg, &menu.selectionfg)) {
 				fprintf(stderr, "Invalid selection foreground color: %s", optarg);
 			}
 			break;
@@ -1135,24 +1135,24 @@ int main(int argc, char **argv) {
 		exit(EXIT_FAILURE);
 	}
 
-	menu_init(&state);
-	menu_create_surface(&state);
-	render_frame(&state);
+	menu_init(&menu);
+	menu_create_surface(&menu);
+	render_frame(&menu);
 
-	read_stdin(&state);
-	match(&state);
-	render_frame(&state);
+	read_stdin(&menu);
+	match(&menu);
+	render_frame(&menu);
 
 	struct pollfd fds[] = {
-		{ wl_display_get_fd(state.display), POLLIN },
-		{ state.repeat_timer, POLLIN },
+		{ wl_display_get_fd(menu.display), POLLIN },
+		{ menu.repeat_timer, POLLIN },
 	};
 	const size_t nfds = sizeof(fds) / sizeof(*fds);
 
-	while (state.run) {
+	while (menu.run) {
 		errno = 0;
 		do {
-			if (wl_display_flush(state.display) == -1 && errno != EAGAIN) {
+			if (wl_display_flush(menu.display) == -1 && errno != EAGAIN) {
 				fprintf(stderr, "wl_display_flush: %s\n", strerror(errno));
 				break;
 			}
@@ -1164,19 +1164,19 @@ int main(int argc, char **argv) {
 		}
 
 		if (fds[0].revents & POLLIN) {
-			if (wl_display_dispatch(state.display) < 0) {
-				state.run = false;
+			if (wl_display_dispatch(menu.display) < 0) {
+				menu.run = false;
 			}
 		}
 
 		if (fds[1].revents & POLLIN) {
-			keyboard_repeat(&state);
+			keyboard_repeat(&menu);
 		}
 	}
 
-	wl_display_disconnect(state.display);
+	wl_display_disconnect(menu.display);
 
-	if (state.failure) {
+	if (menu.failure) {
 		return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;
