@@ -27,14 +27,14 @@ struct menu_item {
 	int width;
 	struct menu_item *next;         // traverses all items
 	struct menu_item *left, *right; // traverses matching items
-	struct item_group *group;
+	struct page *page;
 };
 
-struct item_group {
+struct page {
 	struct menu_item *first;
 	struct menu_item *last;
-	struct item_group *prev;
-	struct item_group *next;
+	struct page *prev;
+	struct page *next;
 };
 
 struct output {
@@ -100,7 +100,7 @@ struct menu_state {
 	struct menu_item *matchstart;
 	struct menu_item *matchend;
 	struct menu_item *selection;
-	struct item_group *groups;
+	struct page *pages;
 };
 
 static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
@@ -114,6 +114,71 @@ static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
 static void insert(struct menu_state *state, const char *s, ssize_t n);
 static void match(struct menu_state *state);
 static size_t nextrune(struct menu_state *state, int incr);
+
+static void append_page(struct page *page, struct page **first, struct page **last) {
+	if (*last) {
+		(*last)->next = page;
+	} else {
+		*first = page;
+	}
+	page->prev = *last;
+	page->next = NULL;
+	*last = page;
+}
+
+static void page_items(struct menu_state *state) {
+	// Free existing pages
+	while (state->pages != NULL) {
+		struct page *page = state->pages;
+		state->pages = state->pages->next;
+		free(page);
+	}
+
+	if (!state->matchstart) {
+		return;
+	}
+
+	// Make new pages
+	if (state->vertical) {
+		struct page *pages_end = NULL;
+		struct menu_item *item = state->matchstart;
+		while (item) {
+			struct page *page = calloc(1, sizeof(struct page));
+			page->first = item;
+
+			for (int i = 1; item && i <= state->lines; i++) {
+				item->page = page;
+				page->last = item;
+				item = item->right;
+			}
+			append_page(page, &state->pages, &pages_end);
+		}
+	} else {
+		// Calculate available space
+		int max_width = state->width - state->inputw - state->promptw
+			- state->left_arrow - state->right_arrow;
+
+		struct page *pages_end = NULL;
+		struct menu_item *item = state->matchstart;
+		while (item) {
+			struct page *page = calloc(1, sizeof(struct page));
+			page->first = item;
+
+			int total_width = 0;
+			while (item) {
+				total_width += item->width + 2 * state->padding;
+				if (total_width > max_width) {
+					break;
+				}
+
+				item->page = page;
+				page->last = item;
+				item = item->right;
+			}
+			append_page(page, &state->pages, &pages_end);
+		}
+	}
+}
 
 int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 		int x, int y, int width, int height,
@@ -186,73 +251,6 @@ void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *
 	pango_printf(cairo, state->font, 1, str);
 }
 
-void append_group(struct item_group *group, struct item_group **first, struct item_group **last) {
-	if (*last) {
-		(*last)->next = group;
-	} else {
-		*first = group;
-	}
-	group->prev = *last;
-	group->next = NULL;
-	*last = group;
-}
-
-void group_items(struct menu_state *state) {
-	// Free existing groups
-	struct item_group *group = state->groups;
-	while (group != NULL) {
-		struct item_group *current = group;
-		group = group->next;
-		free(current);
-	}
-	state->groups = NULL;
-
-	if (!state->matchstart) {
-		return;
-	}
-
-	// Make new item groups
-	if (state->vertical) {
-		struct item_group *groupend = NULL;
-		struct menu_item *item = state->matchstart;
-		while (item) {
-			struct item_group *group = calloc(1, sizeof(struct item_group));
-			group->first = item;
-
-			for (int i = 1; item && i <= state->lines; i++) {
-				item->group = group;
-				group->last = item;
-				item = item->right;
-			}
-			append_group(group, &state->groups, &groupend);
-		}
-	} else {
-		// Calculate available space
-		int max_width = state->width - state->inputw - state->promptw
-			- state->left_arrow - state->right_arrow;
-
-		struct item_group *groupend = NULL;
-		struct menu_item *item = state->matchstart;
-		while (item) {
-			struct item_group *group = calloc(1, sizeof(struct item_group));
-			group->first = item;
-
-			int total_width = 0;
-			while (item) {
-				total_width += item->width + 2 * state->padding;
-				if (total_width > max_width) {
-					break;
-				}
-
-				item->group = group;
-				group->last = item;
-				item = item->right;
-			}
-			append_group(group, &state->groups, &groupend);
-		}
-	}
-}
-
 void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 	int width = state->width;
 	int padding = state->padding;
@@ -303,7 +301,7 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 		// Draw matches vertically
 		int y = state->line_height;
 		struct menu_item *item;
-		for (item = state->selection->group->first; item != state->selection->group->last->right; item = item->right) {
+		for (item = state->selection->page->first; item != state->selection->page->last->right; item = item->right) {
 			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
 			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
 			render_vertical_item(state, cairo, item->text,
@@ -325,7 +323,7 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 
 		// Draw matches horizontally
 		struct menu_item *item;
-		for (item = state->selection->group->first; item != state->selection->group->last->right; item = item->right) {
+		for (item = state->selection->page->first; item != state->selection->page->last->right; item = item->right) {
 			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
 			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
 			x = render_horizontal_item(state, cairo, item->text,
@@ -335,13 +333,13 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 		}
 
 		// Draw left scroll indicator if necessary
-		if (state->selection->group->prev) {
+		if (state->selection->page->prev) {
 			cairo_move_to(cairo, left_arrow_pos, 0);
 			pango_printf(cairo, state->font, 1, "<");
 		}
 
 		// Draw right scroll indicator if necessary
-		if (state->selection->group->next) {
+		if (state->selection->page->next) {
 			cairo_move_to(cairo, width - state->right_arrow + padding, 0);
 			pango_printf(cairo, state->font, 1, ">");
 		}
@@ -656,15 +654,15 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		break;
 	case XKB_KEY_Page_Up:
 	case XKB_KEY_KP_Page_Up:
-		if (state->selection->group->prev) {
-			state->selection = state->selection->group->prev->first;
+		if (state->selection->page->prev) {
+			state->selection = state->selection->page->prev->first;
 			render_frame(state);
 		}
 		break;
 	case XKB_KEY_Page_Down:
 	case XKB_KEY_KP_Page_Down:
-		if (state->selection->group->next) {
-			state->selection = state->selection->group->next->first;
+		if (state->selection->page->next) {
+			state->selection = state->selection->page->next->first;
 			render_frame(state);
 		}
 		break;
@@ -923,8 +921,8 @@ void match(struct menu_state *state) {
 		state->matchend = substrend;
 	}
 
-	group_items(state);
-	state->selection = state->groups->first;
+	page_items(state);
+	state->selection = state->pages->first;
 }
 
 size_t nextrune(struct menu_state *state, int incr) {
