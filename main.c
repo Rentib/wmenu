@@ -215,20 +215,16 @@ static int render_horizontal_item(struct menu_state *state, cairo_t *cairo, cons
 	get_text_size(cairo, state->font, &text_width, &text_height, NULL, 1, str);
 	int text_y = (state->line_height / 2.0) - (text_height / 2.0);
 
-	if (x + left_padding + text_width > width) {
-		return -1;
-	} else {
-		if (background) {
-			int bg_width = text_width + left_padding + right_padding;
-			cairo_set_source_u32(cairo, background);
-			cairo_rectangle(cairo, x, y, bg_width, height);
-			cairo_fill(cairo);
-		}
-
-		cairo_move_to(cairo, x + left_padding, y + text_y);
-		cairo_set_source_u32(cairo, foreground);
-		pango_printf(cairo, state->font, 1, str);
+	if (background) {
+		int bg_width = text_width + left_padding + right_padding;
+		cairo_set_source_u32(cairo, background);
+		cairo_rectangle(cairo, x, y, bg_width, height);
+		cairo_fill(cairo);
 	}
+
+	cairo_move_to(cairo, x + left_padding, y + text_y);
+	cairo_set_source_u32(cairo, foreground);
+	pango_printf(cairo, state->font, 1, str);
 
 	return x + text_width + left_padding + right_padding;
 }
