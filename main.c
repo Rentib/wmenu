@@ -180,7 +180,7 @@ static void page_items(struct menu_state *state) {
 	}
 }
 
-int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
+static int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 		int x, int y, int width, int height,
 		uint32_t foreground, uint32_t background,
 		int left_padding, int right_padding) {
@@ -203,7 +203,7 @@ int render_text(struct menu_state *state, cairo_t *cairo, const char *str,
 	return x + text_width + left_padding + right_padding;
 }
 
-int render_horizontal_item(struct menu_state *state, cairo_t *cairo, const char *str,
+static int render_horizontal_item(struct menu_state *state, cairo_t *cairo, const char *str,
 		int x, int y, int width, int height,
 		uint32_t foreground, uint32_t background,
 		int left_padding, int right_padding) {
@@ -230,7 +230,7 @@ int render_horizontal_item(struct menu_state *state, cairo_t *cairo, const char 
 	return x + text_width + left_padding + right_padding;
 }
 
-void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *str,
+static void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *str,
 		int x, int y, int width, int height,
 		uint32_t foreground, uint32_t background,
 		int left_padding) {
@@ -251,7 +251,7 @@ void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *
 	pango_printf(cairo, state->font, 1, str);
 }
 
-void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
+static void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 	int width = state->width;
 	int padding = state->padding;
 
@@ -346,7 +346,7 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 	}
 }
 
-void render_frame(struct menu_state *state) {
+static void render_frame(struct menu_state *state) {
 	cairo_surface_t *recorder = cairo_recording_surface_create(
 			CAIRO_CONTENT_COLOR_ALPHA, NULL);
 	cairo_t *cairo = cairo_create(recorder);
@@ -415,7 +415,7 @@ static void layer_surface_closed(void *data,
 	state->run = false;
 }
 
-struct zwlr_layer_surface_v1_listener layer_surface_listener = {
+static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
 	.configure = layer_surface_configure,
 	.closed = layer_surface_closed,
 };
@@ -434,7 +434,7 @@ static void output_name(void *data, struct wl_output *wl_output, const char *nam
 	}
 }
 
-struct wl_output_listener output_listener = {
+static const struct wl_output_listener output_listener = {
 	.geometry = noop,
 	.mode = noop,
 	.done = noop,
@@ -466,7 +466,7 @@ static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 	state->xkb_state = xkb_state_new(state->xkb_keymap);
 }
 
-void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
+static void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		xkb_keysym_t sym) {
 	if (key_state != WL_KEYBOARD_KEY_STATE_PRESSED) {
 		return;
@@ -723,7 +723,7 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 	}
 }
 
-void keyboard_repeat(struct menu_state *state) {
+static void keyboard_repeat(struct menu_state *state) {
 	keypress(state, state->repeat_key_state, state->repeat_sym);
 	struct itimerspec spec = { 0 };
 	spec.it_value.tv_sec = state->repeat_period / 1000;
@@ -844,7 +844,7 @@ static const struct wl_registry_listener registry_listener = {
 	.global_remove = noop,
 };
 
-void insert(struct menu_state *state, const char *s, ssize_t n) {
+static void insert(struct menu_state *state, const char *s, ssize_t n) {
 	if (strlen(state->text) + n > sizeof state->text - 1) {
 		return;
 	}
@@ -857,7 +857,7 @@ void insert(struct menu_state *state, const char *s, ssize_t n) {
 	match(state);
 }
 
-const char * fstrstr(struct menu_state *state, const char *s, const char *sub) {
+static const char * fstrstr(struct menu_state *state, const char *s, const char *sub) {
 	size_t len;
 
 	for(len = strlen(sub); *s; s++)
@@ -866,7 +866,7 @@ const char * fstrstr(struct menu_state *state, const char *s, const char *sub) {
 	return NULL;
 }
 
-void append_item(struct menu_item *item, struct menu_item **first, struct menu_item **last) {
+static void append_item(struct menu_item *item, struct menu_item **first, struct menu_item **last) {
 	if (*last) {
 		(*last)->right = item;
 	} else {
@@ -877,7 +877,7 @@ void append_item(struct menu_item *item, struct menu_item **first, struct menu_i
 	*last = item;
 }
 
-void match(struct menu_state *state) {
+static void match(struct menu_state *state) {
 	struct menu_item *lexact = NULL, *exactend = NULL;
 	struct menu_item *lprefix = NULL, *prefixend = NULL;
 	struct menu_item *lsubstr  = NULL, *substrend = NULL;
@@ -925,7 +925,7 @@ void match(struct menu_state *state) {
 	state->selection = state->pages->first;
 }
 
-size_t nextrune(struct menu_state *state, int incr) {
+static size_t nextrune(struct menu_state *state, int incr) {
 	size_t n, len;
 
 	len = strlen(state->text);
@@ -933,7 +933,7 @@ size_t nextrune(struct menu_state *state, int incr) {
 	return n;
 }
 
-void read_stdin(struct menu_state *state) {
+static void read_stdin(struct menu_state *state) {
 	char buf[sizeof state->text], *p;
 	struct menu_item *item, **end;
 
@@ -1035,7 +1035,7 @@ static void menu_create_surface(struct menu_state *state) {
 	wl_display_roundtrip(state->display);
 }
 
-bool parse_color(const char *color, uint32_t *result) {
+static bool parse_color(const char *color, uint32_t *result) {
 	if (color[0] == '#') {
 		++color;
 	}
