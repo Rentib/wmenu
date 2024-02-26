@@ -171,7 +171,7 @@ static void page_items(struct menu *menu) {
 	}
 }
 
-static const char * fstrstr(struct menu *menu, const char *s, const char *sub) {
+static const char *fstrstr(struct menu *menu, const char *s, const char *sub) {
 	for (size_t len = strlen(sub); *s; s++) {
 		if (!menu->strncmp(s, sub, len)) {
 			return s;
@@ -261,6 +261,30 @@ static size_t nextrune(struct menu *menu, int incr) {
 	return n;
 }
 
+// Calculate text widths.
+static void calc_widths(struct menu *menu) {
+	cairo_t *cairo = menu->current->cairo;
+
+	// Calculate prompt width
+	if (menu->prompt) {
+		menu->promptw = text_width(cairo, menu->font, menu->prompt);
+	} else {
+		menu->promptw = 0;
+	}
+
+	// Calculate scroll indicator widths
+	menu->left_arrow = text_width(cairo, menu->font, "<") + 2 * menu->padding;
+	menu->right_arrow = text_width(cairo, menu->font, ">") + 2 * menu->padding;
+
+	// Calculate item widths and input area width
+	for (struct item *item = menu->items; item; item = item->next) {
+		item->width = text_width(cairo, menu->font, item->text);
+		if (item->width > menu->inputw) {
+			menu->inputw = item->width;
+		}
+	}
+}
+
 static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
 	cairo_set_source_rgba(cairo,
 			(color >> (3*8) & 0xFF) / 255.0,
@@ -270,76 +294,47 @@ static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
 }
 
 static int render_text(struct menu *menu, cairo_t *cairo, const char *str,
-		int x, int y, int width, int height,
-		uint32_t foreground, uint32_t background,
+		int x, int y, int width, uint32_t bg_color, uint32_t fg_color,
 		int left_padding, int right_padding) {
 
 	int text_width, text_height;
 	get_text_size(cairo, menu->font, &text_width, &text_height, NULL, 1, str);
 	int text_y = (menu->line_height / 2.0) - (text_height / 2.0);
 
-	if (background) {
-		int bg_width = text_width + left_padding + right_padding;
-		cairo_set_source_u32(cairo, background);
-		cairo_rectangle(cairo, x, y, bg_width, height);
+	if (width == 0) {
+		width = text_width + left_padding + right_padding;
+	}
+	if (bg_color) {
+		cairo_set_source_u32(cairo, bg_color);
+		cairo_rectangle(cairo, x, y, width, menu->line_height);
 		cairo_fill(cairo);
 	}
-
 	cairo_move_to(cairo, x + left_padding, y + text_y);
-	cairo_set_source_u32(cairo, foreground);
+	cairo_set_source_u32(cairo, fg_color);
 	pango_printf(cairo, menu->font, 1, str);
 
-	return x + text_width + left_padding + right_padding;
+	return width;
 }
 
-static int render_horizontal_item(struct menu *menu, cairo_t *cairo, const char *str,
-		int x, int y, int width, int height,
-		uint32_t foreground, uint32_t background,
-		int left_padding, int right_padding) {
+static int render_horizontal_item(struct menu *menu, cairo_t *cairo, struct item *item, int x) {
+	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
+	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
 
-	int text_width, text_height;
-	get_text_size(cairo, menu->font, &text_width, &text_height, NULL, 1, str);
-	int text_y = (menu->line_height / 2.0) - (text_height / 2.0);
-
-	if (background) {
-		int bg_width = text_width + left_padding + right_padding;
-		cairo_set_source_u32(cairo, background);
-		cairo_rectangle(cairo, x, y, bg_width, height);
-		cairo_fill(cairo);
-	}
-
-	cairo_move_to(cairo, x + left_padding, y + text_y);
-	cairo_set_source_u32(cairo, foreground);
-	pango_printf(cairo, menu->font, 1, str);
-
-	return x + text_width + left_padding + right_padding;
+	return render_text(menu, cairo, item->text, x, 0, 0,
+		bg_color, fg_color, menu->padding, menu->padding);
 }
 
-static void render_vertical_item(struct menu *menu, cairo_t *cairo, const char *str,
-		int x, int y, int width, int height,
-		uint32_t foreground, uint32_t background,
-		int left_padding) {
+static void render_vertical_item(struct menu *menu, cairo_t *cairo, struct item *item, int x, int y) {
+	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
+	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
 
-	int text_height;
-	get_text_size(cairo, menu->font, NULL, &text_height, NULL, 1, str);
-	int text_y = (menu->line_height / 2.0) - (text_height / 2.0);
-
-	if (background) {
-		int bg_width = menu->width - x;
-		cairo_set_source_u32(cairo, background);
-		cairo_rectangle(cairo, x, y, bg_width, height);
-		cairo_fill(cairo);
-	}
-
-	cairo_move_to(cairo, x + left_padding, y + text_y);
-	cairo_set_source_u32(cairo, foreground);
-	pango_printf(cairo, menu->font, 1, str);
+	render_text(menu, cairo, item->text, x, y, menu->width - x,
+		bg_color, fg_color, menu->padding, 0);
+	return;
 }
 
 static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
-	int width = menu->width;
-	int padding = menu->padding;
-
+	// Draw background
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_u32(cairo, menu->background);
 	cairo_paint(cairo);
@@ -348,28 +343,19 @@ static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 
 	// Draw prompt
 	if (menu->prompt) {
-		menu->promptw = render_text(menu, cairo, menu->prompt,
-				0, 0, menu->width, menu->line_height,
-				menu->promptfg, menu->promptbg,
-				padding, padding/2);
-		x += menu->promptw;
+		x += render_text(menu, cairo, menu->prompt, 0, 0, 0,
+			menu->promptbg, menu->promptfg, menu->padding, menu->padding/2);
 	}
 
-	// Draw background
-	cairo_set_source_u32(cairo, menu->background);
-	cairo_rectangle(cairo, x, 0, 300, menu->height);
-	cairo_fill(cairo);
-
 	// Draw input
-	render_text(menu, cairo, menu->text,
-			x, 0, menu->width, menu->line_height,
-			menu->foreground, 0, padding, padding);
+	render_text(menu, cairo, menu->text, x, 0, 0,
+		0, menu->foreground, menu->padding, menu->padding);
 
 	// Draw cursor
 	{
-		int cursor_width = 2;
-		int cursor_margin = 2;
-		int cursor_pos = x + padding
+		const int cursor_width = 2;
+		const int cursor_margin = 2;
+		int cursor_pos = x + menu->padding
 			+ text_width(cairo, menu->font, menu->text)
 			- text_width(cairo, menu->font, &menu->text[menu->cursor])
 			- cursor_width / 2;
@@ -382,50 +368,34 @@ static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 		return;
 	}
 
+	// Draw matches
 	if (menu->vertical) {
 		// Draw matches vertically
 		int y = menu->line_height;
 		struct item *item;
 		for (item = menu->sel->page->first; item != menu->sel->page->last->next_match; item = item->next_match) {
-			uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
-			uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
-			render_vertical_item(menu, cairo, item->text,
-				x, y, width, menu->line_height,
-				fg_color, bg_color, padding);
+			render_vertical_item(menu, cairo, item, x, y);
 			y += menu->line_height;
 		}
 	} else {
-		// Leave room for input
-		x += menu->inputw;
-
-		// Calculate scroll indicator widths
-		menu->left_arrow = text_width(cairo, menu->font, "<") + 2 * padding;
-		menu->right_arrow = text_width(cairo, menu->font, ">") + 2 * padding;
-
-		// Remember scroll indicator position
-		int left_arrow_pos = x + padding;
-		x += menu->left_arrow;
+		// Leave room for input and left arrow
+		x += menu->inputw + menu->left_arrow;
 
 		// Draw matches horizontally
 		struct item *item;
 		for (item = menu->sel->page->first; item != menu->sel->page->last->next_match; item = item->next_match) {
-			uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
-			uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
-			x = render_horizontal_item(menu, cairo, item->text,
-				x, 0, width - menu->right_arrow, menu->line_height,
-				fg_color, bg_color, padding, padding);
-			// TODO: Make sure render_horizontal_item doesn't return -1
+			x += render_horizontal_item(menu, cairo, item, x);
 		}
 
 		// Draw left scroll indicator if necessary
 		if (menu->sel->page->prev) {
-			cairo_move_to(cairo, left_arrow_pos, 0);
+			cairo_move_to(cairo, menu->promptw + menu->inputw + menu->padding, 0);
 			pango_printf(cairo, menu->font, 1, "<");
 		}
 
 		// Draw right scroll indicator if necessary
 		if (menu->sel->page->next) {
-			cairo_move_to(cairo, width - menu->right_arrow + padding, 0);
+			cairo_move_to(cairo, menu->width - menu->right_arrow + menu->padding, 0);
 			pango_printf(cairo, menu->font, 1, ">");
 		}
 	}
@@ -949,12 +919,6 @@ static void read_stdin(struct menu *menu) {
 
 		item->text = strdup(buf);
 		item->next = item->prev_match = item->next_match = NULL;
-
-		cairo_t *cairo = menu->current->cairo;
-		item->width = text_width(cairo, menu->font, item->text);
-		if (item->width > menu->inputw) {
-			menu->inputw = item->width;
-		}
 	}
 }
 
@@ -1142,6 +1106,7 @@ int main(int argc, char **argv) {
 	render_frame(&menu);
 
 	read_stdin(&menu);
+	calc_widths(&menu);
 	match_items(&menu);
 	render_frame(&menu);
 
