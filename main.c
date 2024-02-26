@@ -90,6 +90,7 @@ struct menu_state {
 
 	struct menu_item *items;
 	struct menu_item *matches;
+	struct menu_item *matchend;
 	struct menu_item *selection;
 	struct menu_item *leftmost, *rightmost;
 };
@@ -726,14 +727,9 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 			state->cursor = len;
 			render_frame(state);
 		} else {
-			if (!state->selection || !state->selection->right) {
-				return;
-			}
-			while (state->selection && state->selection->right) {
-				state->selection = state->selection->right;
-			}
+			state->selection = state->matchend;
+			state->rightmost = state->matchend;
 			state->leftmost = NULL;
-			state->rightmost = state->selection;
 			scroll_matches(state);
 			render_frame(state);
 		}
@@ -932,6 +928,7 @@ void match(struct menu_state *state) {
 	struct menu_item *item, *itemend, *lexact, *lprefix, *lsubstr, *exactend, *prefixend, *substrend;
 
 	state->matches = NULL;
+	state->matchend = NULL;
 	state->leftmost = NULL;
 	size_t len = strlen(state->text);
 	state->matches = lexact = lprefix = lsubstr = itemend = exactend = prefixend = substrend = NULL;
@@ -962,11 +959,12 @@ void match(struct menu_state *state) {
 		if (itemend) {
 			itemend->right = lsubstr;
 			lsubstr->left = itemend;
-			itemend = substrend;
 		} else {
 			state->matches = lsubstr;
 		}
+		itemend = substrend;
 	}
+	state->matchend = itemend;
 	state->selection = state->matches;
 	state->leftmost = state->matches;
 	state->rightmost = NULL;
