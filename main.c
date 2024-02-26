@@ -316,6 +316,7 @@ static int render_text(struct menu *menu, cairo_t *cairo, const char *str,
 	return width;
 }
 
+// Renders a single menu item horizontally.
 static int render_horizontal_item(struct menu *menu, cairo_t *cairo, struct item *item, int x) {
 	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
 	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
@@ -324,13 +325,41 @@ static int render_horizontal_item(struct menu *menu, cairo_t *cairo, struct item
 		bg_color, fg_color, menu->padding, menu->padding);
 }
 
-static void render_vertical_item(struct menu *menu, cairo_t *cairo, struct item *item, int x, int y) {
+// Renders a single menu item vertically.
+static int render_vertical_item(struct menu *menu, cairo_t *cairo, struct item *item, int x, int y) {
 	uint32_t bg_color = menu->sel == item ? menu->selectionbg : menu->background;
 	uint32_t fg_color = menu->sel == item ? menu->selectionfg : menu->foreground;
 
 	render_text(menu, cairo, item->text, x, y, menu->width - x,
 		bg_color, fg_color, menu->padding, 0);
-	return;
+	return menu->line_height;
+}
+
+// Renders a page of menu items horizontally.
+static void render_horizontal_page(struct menu *menu, cairo_t *cairo, struct page *page) {
+	int x = menu->promptw + menu->inputw + menu->left_arrow;
+	for (struct item *item = page->first; item != page->last->next_match; item = item->next_match) {
+		x += render_horizontal_item(menu, cairo, item, x);
+	}
+
+	// Draw left and right scroll indicators if necessary
+	if (page->prev) {
+		cairo_move_to(cairo, menu->promptw + menu->inputw + menu->padding, 0);
+		pango_printf(cairo, menu->font, 1, "<");
+	}
+	if (page->next) {
+		cairo_move_to(cairo, menu->width - menu->right_arrow + menu->padding, 0);
+		pango_printf(cairo, menu->font, 1, ">");
+	}
+}
+
+// Renders a page of menu items vertically.
+static void render_vertical_page(struct menu *menu, cairo_t *cairo, struct page *page) {
+	int x = menu->promptw;
+	int y = menu->line_height;
+	for (struct item *item = page->first; item != page->last->next_match; item = item->next_match) {
+		y += render_vertical_item(menu, cairo, item, x, y);
+	}
 }
 
 static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
@@ -364,40 +393,14 @@ static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
 		cairo_fill(cairo);
 	}
 
-	if (!menu->matches) {
+	if (!menu->sel) {
 		return;
 	}
-
 	// Draw matches
 	if (menu->vertical) {
-		// Draw matches vertically
-		int y = menu->line_height;
-		struct item *item;
-		for (item = menu->sel->page->first; item != menu->sel->page->last->next_match; item = item->next_match) {
-			render_vertical_item(menu, cairo, item, x, y);
-			y += menu->line_height;
-		}
+		render_vertical_page(menu, cairo, menu->sel->page);
 	} else {
-		// Leave room for input and left arrow
-		x += menu->inputw + menu->left_arrow;
-
-		// Draw matches horizontally
-		struct item *item;
-		for (item = menu->sel->page->first; item != menu->sel->page->last->next_match; item = item->next_match) {
-			x += render_horizontal_item(menu, cairo, item, x);
-		}
-
-		// Draw left scroll indicator if necessary
-		if (menu->sel->page->prev) {
-			cairo_move_to(cairo, menu->promptw + menu->inputw + menu->padding, 0);
-			pango_printf(cairo, menu->font, 1, "<");
-		}
-
-		// Draw right scroll indicator if necessary
-		if (menu->sel->page->next) {
-			cairo_move_to(cairo, menu->width - menu->right_arrow + menu->padding, 0);
-			pango_printf(cairo, menu->font, 1, ">");
-		}
+		render_horizontal_page(menu, cairo, menu->sel->page);
 	}
 }
 
