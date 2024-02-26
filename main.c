@@ -621,6 +621,12 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 			}
 			render_frame(state);
 			return;
+
+		case XKB_KEY_Return:
+		case XKB_KEY_KP_Enter:
+			break;
+		default:
+			return;
 		}
 	}
 
