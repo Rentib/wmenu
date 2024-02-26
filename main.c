@@ -87,7 +87,7 @@ struct menu {
 	uint32_t promptbg, promptfg;
 	uint32_t selectionbg, selectionfg;
 
-	char text[BUFSIZ];
+	char input[BUFSIZ];
 	size_t cursor;
 
 	int repeat_timer;
@@ -199,15 +199,15 @@ static void match_items(struct menu *menu) {
 	menu->matches_end = NULL;
 	menu->sel = NULL;
 
-	size_t len = strlen(menu->text);
+	size_t len = strlen(menu->input);
 
 	struct item *item;
 	for (item = menu->items; item; item = item->next) {
-		if (!menu->strncmp(menu->text, item->text, len + 1)) {
+		if (!menu->strncmp(menu->input, item->text, len + 1)) {
 			append_item(item, &lexact, &exactend);
-		} else if (!menu->strncmp(menu->text, item->text, len)) {
+		} else if (!menu->strncmp(menu->input, item->text, len)) {
 			append_item(item, &lprefix, &prefixend);
-		} else if (fstrstr(menu, item->text, menu->text)) {
+		} else if (fstrstr(menu, item->text, menu->input)) {
 			append_item(item, &lsubstr, &substrend);
 		}
 	}
@@ -242,13 +242,13 @@ static void match_items(struct menu *menu) {
 }
 
 static void insert(struct menu *menu, const char *s, ssize_t n) {
-	if (strlen(menu->text) + n > sizeof menu->text - 1) {
+	if (strlen(menu->input) + n > sizeof menu->input - 1) {
 		return;
 	}
-	memmove(menu->text + menu->cursor + n, menu->text + menu->cursor,
-			sizeof menu->text - menu->cursor - MAX(n, 0));
+	memmove(menu->input + menu->cursor + n, menu->input + menu->cursor,
+			sizeof menu->input - menu->cursor - MAX(n, 0));
 	if (n > 0 && s != NULL) {
-		memcpy(menu->text + menu->cursor, s, n);
+		memcpy(menu->input + menu->cursor, s, n);
 	}
 	menu->cursor += n;
 }
@@ -256,8 +256,8 @@ static void insert(struct menu *menu, const char *s, ssize_t n) {
 static size_t nextrune(struct menu *menu, int incr) {
 	size_t n, len;
 
-	len = strlen(menu->text);
-	for(n = menu->cursor + incr; n < len && (menu->text[n] & 0xc0) == 0x80; n += incr);
+	len = strlen(menu->input);
+	for(n = menu->cursor + incr; n < len && (menu->input[n] & 0xc0) == 0x80; n += incr);
 	return n;
 }
 
@@ -267,7 +267,7 @@ static void calc_widths(struct menu *menu) {
 
 	// Calculate prompt width
 	if (menu->prompt) {
-		menu->promptw = text_width(cairo, menu->font, menu->prompt);
+		menu->promptw = text_width(cairo, menu->font, menu->prompt) + menu->padding + menu->padding/2;
 	} else {
 		menu->promptw = 0;
 	}
@@ -293,6 +293,7 @@ static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
 			(color >> (0*8) & 0xFF) / 255.0);
 }
 
+// Renders text to cairo.
 static int render_text(struct menu *menu, cairo_t *cairo, const char *str,
 		int x, int y, int width, uint32_t bg_color, uint32_t fg_color,
 		int left_padding, int right_padding) {
@@ -314,6 +315,34 @@ static int render_text(struct menu *menu, cairo_t *cairo, const char *str,
 	pango_printf(cairo, menu->font, 1, str);
 
 	return width;
+}
+
+// Renders the prompt message.
+static void render_prompt(struct menu *menu, cairo_t *cairo) {
+	if (!menu->prompt) {
+		return;
+	}
+	render_text(menu, cairo, menu->prompt, 0, 0, 0,
+		menu->promptbg, menu->promptfg, menu->padding, menu->padding/2);
+}
+
+// Renders the input text.
+static void render_input(struct menu *menu, cairo_t *cairo) {
+	render_text(menu, cairo, menu->input, menu->promptw, 0, 0,
+		0, menu->foreground, menu->padding, menu->padding);
+}
+
+// Renders a cursor for the input field.
+static void render_cursor(struct menu *menu, cairo_t *cairo) {
+	const int cursor_width = 2;
+	const int cursor_margin = 2;
+	int cursor_pos = menu->promptw + menu->padding
+		+ text_width(cairo, menu->font, menu->input)
+		- text_width(cairo, menu->font, &menu->input[menu->cursor])
+		- cursor_width / 2;
+	cairo_rectangle(cairo, cursor_pos, cursor_margin, cursor_width,
+			menu->line_height - 2 * cursor_margin);
+	cairo_fill(cairo);
 }
 
 // Renders a single menu item horizontally.
@@ -362,41 +391,22 @@ static void render_vertical_page(struct menu *menu, cairo_t *cairo, struct page 
 	}
 }
 
-static void render_to_cairo(struct menu *menu, cairo_t *cairo) {
-	// Draw background
+// Renders the menu to cairo.
+static void render_menu(struct menu *menu, cairo_t *cairo) {
+	// Render background
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_u32(cairo, menu->background);
 	cairo_paint(cairo);
 
-	int x = 0;
+	// Render prompt and input
+	render_prompt(menu, cairo);
+	render_input(menu, cairo);
+	render_cursor(menu, cairo);
 
-	// Draw prompt
-	if (menu->prompt) {
-		x += render_text(menu, cairo, menu->prompt, 0, 0, 0,
-			menu->promptbg, menu->promptfg, menu->padding, menu->padding/2);
-	}
-
-	// Draw input
-	render_text(menu, cairo, menu->text, x, 0, 0,
-		0, menu->foreground, menu->padding, menu->padding);
-
-	// Draw cursor
-	{
-		const int cursor_width = 2;
-		const int cursor_margin = 2;
-		int cursor_pos = x + menu->padding
-			+ text_width(cairo, menu->font, menu->text)
-			- text_width(cairo, menu->font, &menu->text[menu->cursor])
-			- cursor_width / 2;
-		cairo_rectangle(cairo, cursor_pos, cursor_margin, cursor_width,
-				menu->line_height - 2 * cursor_margin);
-		cairo_fill(cairo);
-	}
-
+	// Render selected page
 	if (!menu->sel) {
 		return;
 	}
-	// Draw matches
 	if (menu->vertical) {
 		render_vertical_page(menu, cairo, menu->sel->page);
 	} else {
@@ -417,7 +427,7 @@ static void render_frame(struct menu *menu) {
 	cairo_paint(cairo);
 	cairo_restore(cairo);
 
-	render_to_cairo(menu, cairo);
+	render_menu(menu, cairo);
 
 	int scale = menu->output ? menu->output->scale : 1;
 	menu->current = get_next_buffer(menu->shm,
@@ -537,7 +547,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			XKB_MOD_NAME_SHIFT,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
 
-	size_t len = strlen(menu->text);
+	size_t len = strlen(menu->input);
 
 	if (ctrl) {
 		// Emacs-style line editing bindings
@@ -588,7 +598,7 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 
 		case XKB_KEY_k:
 			// Delete right
-			menu->text[menu->cursor] = '\0';
+			menu->input[menu->cursor] = '\0';
 			match_items(menu);
 			render_frame(menu);
 			return;
@@ -600,10 +610,10 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			return;
 		case XKB_KEY_w:
 			// Delete word
-			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] == ' ') {
+			while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] == ' ') {
 				insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
 			}
-			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] != ' ') {
+			while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] != ' ') {
 				insert(menu, NULL, nextrune(menu, -1) - menu->cursor);
 			}
 			match_items(menu);
@@ -643,10 +653,10 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		case XKB_KEY_Left:
 		case XKB_KEY_KP_Left:
 			// Move to beginning of word
-			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] == ' ') {
+			while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] == ' ') {
 				menu->cursor = nextrune(menu, -1);
 			}
-			while (menu->cursor > 0 && menu->text[nextrune(menu, -1)] != ' ') {
+			while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] != ' ') {
 				menu->cursor = nextrune(menu, -1);
 			}
 			render_frame(menu);
@@ -654,10 +664,10 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		case XKB_KEY_Right:
 		case XKB_KEY_KP_Right:
 			// Move to end of word
-			while (menu->cursor < len && menu->text[menu->cursor] == ' ') {
+			while (menu->cursor < len && menu->input[menu->cursor] == ' ') {
 				menu->cursor = nextrune(menu, +1);
 			}
-			while (menu->cursor < len && menu->text[menu->cursor] != ' ') {
+			while (menu->cursor < len && menu->input[menu->cursor] != ' ') {
 				menu->cursor = nextrune(menu, +1);
 			}
 			render_frame(menu);
@@ -676,11 +686,11 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 	case XKB_KEY_Return:
 	case XKB_KEY_KP_Enter:
 		if (shift) {
-			puts(menu->text);
+			puts(menu->input);
 			fflush(stdout);
 			menu->run = false;
 		} else {
-			char *text = menu->sel ? menu->sel->text : menu->text;
+			char *text = menu->sel ? menu->sel->text : menu->input;
 			puts(text);
 			fflush(stdout);
 			if (!ctrl) {
@@ -767,9 +777,9 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 		if (!menu->sel) {
 			return;
 		}
-		menu->cursor = strnlen(menu->sel->text, sizeof menu->text - 1);
-		memcpy(menu->text, menu->sel->text, menu->cursor);
-		menu->text[menu->cursor] = '\0';
+		menu->cursor = strnlen(menu->sel->text, sizeof menu->input - 1);
+		memcpy(menu->input, menu->sel->text, menu->cursor);
+		menu->input[menu->cursor] = '\0';
 		match_items(menu);
 		render_frame(menu);
 		break;
@@ -908,7 +918,7 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static void read_stdin(struct menu *menu) {
-	char buf[sizeof menu->text], *p;
+	char buf[sizeof menu->input], *p;
 	struct item *item, **end;
 
 	for(end = &menu->items; fgets(buf, sizeof buf, stdin); *end = item, end = &item->next) {
