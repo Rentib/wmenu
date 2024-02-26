@@ -27,6 +27,14 @@ struct menu_item {
 	int width;
 	struct menu_item *next;         // traverses all items
 	struct menu_item *left, *right; // traverses matching items
+	struct item_group *group;
+};
+
+struct item_group {
+	struct menu_item *first;
+	struct menu_item *last;
+	struct item_group *prev;
+	struct item_group *next;
 };
 
 struct output {
@@ -89,10 +97,10 @@ struct menu_state {
 	bool failure;
 
 	struct menu_item *items;
-	struct menu_item *matches;
+	struct menu_item *matchstart;
 	struct menu_item *matchend;
 	struct menu_item *selection;
-	struct menu_item *leftmost, *rightmost;
+	struct item_group *groups;
 };
 
 static void cairo_set_source_u32(cairo_t *cairo, uint32_t color) {
@@ -178,56 +186,69 @@ void render_vertical_item(struct menu_state *state, cairo_t *cairo, const char *
 	pango_printf(cairo, state->font, 1, str);
 }
 
-void scroll_matches(struct menu_state *state) {
-	if (!state->matches) {
+void append_group(struct item_group *group, struct item_group **first, struct item_group **last) {
+	if (*last) {
+		(*last)->next = group;
+	} else {
+		*first = group;
+	}
+	group->prev = *last;
+	group->next = NULL;
+	*last = group;
+}
+
+void group_items(struct menu_state *state) {
+	// Free existing groups
+	struct item_group *group = state->groups;
+	while (group != NULL) {
+		struct item_group *current = group;
+		group = group->next;
+		free(current);
+	}
+	state->groups = NULL;
+
+	if (!state->matchstart) {
 		return;
 	}
 
-	if (state->leftmost == NULL && state->rightmost == NULL) {
-		state->leftmost = state->matches;
-	}
-
+	// Make new item groups
 	if (state->vertical) {
-		if (state->leftmost == NULL) {
-			struct menu_item *item = state->rightmost;
-			for (int i = 1; item->left && i < state->lines; i++) {
-				item = item->left;
-			}
-			state->leftmost = item;
-		} else if (state->rightmost == NULL) {
-			struct menu_item *item = state->leftmost;
-			for (int i = 1; item->right && i < state->lines; i++) {
+		struct item_group *groupend = NULL;
+		struct menu_item *item = state->matchstart;
+		while (item) {
+			struct item_group *group = calloc(1, sizeof(struct item_group));
+			group->first = item;
+
+			for (int i = 1; item && i <= state->lines; i++) {
+				item->group = group;
+				group->last = item;
 				item = item->right;
 			}
-			state->rightmost = item;
+			append_group(group, &state->groups, &groupend);
 		}
 	} else {
 		// Calculate available space
 		int max_width = state->width - state->inputw - state->promptw
 			- state->left_arrow - state->right_arrow;
 
-		if (state->leftmost == NULL) {
-			state->leftmost = state->rightmost;
+		struct item_group *groupend = NULL;
+		struct menu_item *item = state->matchstart;
+		while (item) {
+			struct item_group *group = calloc(1, sizeof(struct item_group));
+			group->first = item;
+
 			int total_width = 0;
-			struct menu_item *item;
-			for (item = state->rightmost; item; item = item->left) {
+			while (item) {
 				total_width += item->width + 2 * state->padding;
 				if (total_width > max_width) {
 					break;
 				}
-				state->leftmost = item;
+
+				item->group = group;
+				group->last = item;
+				item = item->right;
 			}
-		} else if (state->rightmost == NULL) {
-			state->rightmost = state->leftmost;
-			int total_width = 0;
-			struct menu_item *item;
-			for (item = state->leftmost; item; item = item->right) {
-				total_width += item->width + 2 * state->padding;
-				if (total_width > max_width) {
-					break;
-				}
-				state->rightmost = item;
-			}
+			append_group(group, &state->groups, &groupend);
 		}
 	}
 }
@@ -235,7 +256,6 @@ void scroll_matches(struct menu_state *state) {
 void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 	int width = state->width;
 	int padding = state->padding;
-
 
 	cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
 	cairo_set_source_u32(cairo, state->background);
@@ -275,7 +295,7 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 		cairo_fill(cairo);
 	}
 
-	if (!state->matches) {
+	if (!state->matchstart) {
 		return;
 	}
 
@@ -283,16 +303,13 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 		// Draw matches vertically
 		int y = state->line_height;
 		struct menu_item *item;
-		for (item = state->leftmost; item; item = item->right) {
+		for (item = state->selection->group->first; item != state->selection->group->last->right; item = item->right) {
 			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
 			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
 			render_vertical_item(state, cairo, item->text,
 				x, y, width, state->line_height,
 				fg_color, bg_color, padding);
 			y += state->line_height;
-			if (y >= state->height) {
-				break;
-			}
 		}
 	} else {
 		// Leave room for input
@@ -307,28 +324,24 @@ void render_to_cairo(struct menu_state *state, cairo_t *cairo) {
 		x += state->left_arrow;
 
 		// Draw matches horizontally
-		bool scroll_right = false;
 		struct menu_item *item;
-		for (item = state->leftmost; item; item = item->right) {
+		for (item = state->selection->group->first; item != state->selection->group->last->right; item = item->right) {
 			uint32_t bg_color = state->selection == item ? state->selectionbg : state->background;
 			uint32_t fg_color = state->selection == item ? state->selectionfg : state->foreground;
 			x = render_horizontal_item(state, cairo, item->text,
 				x, 0, width - state->right_arrow, state->line_height,
 				fg_color, bg_color, padding, padding);
-			if (x == -1) {
-				scroll_right = true;
-				break;
-			}
+			// TODO: Make sure render_horizontal_item doesn't return -1
 		}
 
 		// Draw left scroll indicator if necessary
-		if (state->leftmost != state->matches) {
+		if (state->selection->group->prev) {
 			cairo_move_to(cairo, left_arrow_pos, 0);
 			pango_printf(cairo, state->font, 1, "<");
 		}
 
 		// Draw right scroll indicator if necessary
-		if (scroll_right) {
+		if (state->selection->group->next) {
 			cairo_move_to(cairo, width - state->right_arrow + padding, 0);
 			pango_printf(cairo, state->font, 1, ">");
 		}
@@ -621,17 +634,11 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 	case XKB_KEY_KP_Left:
 	case XKB_KEY_Up:
 	case XKB_KEY_KP_Up:
-		if (state->cursor && (!state->selection || !state->selection->left)) {
-			state->cursor = nextrune(state, -1);
-			render_frame(state);
-		}
 		if (state->selection && state->selection->left) {
-			if (state->selection == state->leftmost) {
-				state->rightmost = state->selection->left;
-				state->leftmost = NULL;
-			}
 			state->selection = state->selection->left;
-			scroll_matches(state);
+			render_frame(state);
+		} else if (state->cursor > 0) {
+			state->cursor = nextrune(state, -1);
 			render_frame(state);
 		}
 		break;
@@ -642,50 +649,32 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 		if (state->cursor < len) {
 			state->cursor = nextrune(state, +1);
 			render_frame(state);
-		} else if (state->cursor == len) {
-			if (state->selection && state->selection->right) {
-				if (state->selection == state->rightmost) {
-					state->leftmost = state->selection->right;
-					state->rightmost = NULL;
-				}
-				state->selection = state->selection->right;
-				scroll_matches(state);
-				render_frame(state);
-			}
+		} else if (state->selection && state->selection->right) {
+			state->selection = state->selection->right;
+			render_frame(state);
 		}
 		break;
 	case XKB_KEY_Page_Up:
 	case XKB_KEY_KP_Page_Up:
-		if (state->leftmost && state->leftmost->left) {
-			state->rightmost = state->leftmost->left;
-			state->leftmost = NULL;
-			scroll_matches(state);
-			state->selection = state->leftmost;
+		if (state->selection->group->prev) {
+			state->selection = state->selection->group->prev->first;
 			render_frame(state);
 		}
 		break;
 	case XKB_KEY_Page_Down:
 	case XKB_KEY_KP_Page_Down:
-		if (state->rightmost && state->rightmost->right) {
-			state->leftmost = state->rightmost->right;
-			state->rightmost = NULL;
-			state->selection = state->leftmost;
-			scroll_matches(state);
+		if (state->selection->group->next) {
+			state->selection = state->selection->group->next->first;
 			render_frame(state);
 		}
 		break;
 	case XKB_KEY_Home:
 	case XKB_KEY_KP_Home:
-		if (state->selection == state->matches) {
-			if (state->cursor != 0) {
-				state->cursor = 0;
-				render_frame(state);
-			}
+		if (state->selection == state->matchstart) {
+			state->cursor = 0;
+			render_frame(state);
 		} else {
-			state->selection = state->matches;
-			state->leftmost = state->matches;
-			state->rightmost = NULL;
-			scroll_matches(state);
+			state->selection = state->matchstart;
 			render_frame(state);
 		}
 		break;
@@ -696,9 +685,6 @@ void keypress(struct menu_state *state, enum wl_keyboard_key_state key_state,
 			render_frame(state);
 		} else {
 			state->selection = state->matchend;
-			state->rightmost = state->matchend;
-			state->leftmost = NULL;
-			scroll_matches(state);
 			render_frame(state);
 		}
 		break;
@@ -882,24 +868,28 @@ const char * fstrstr(struct menu_state *state, const char *s, const char *sub) {
 	return NULL;
 }
 
-void append_item(struct menu_item *item, struct menu_item **list, struct menu_item **last) {
-	if(!*last)
-		*list = item;
-	else
+void append_item(struct menu_item *item, struct menu_item **first, struct menu_item **last) {
+	if (*last) {
 		(*last)->right = item;
+	} else {
+		*first = item;
+	}
 	item->left = *last;
 	item->right = NULL;
 	*last = item;
 }
 
 void match(struct menu_state *state) {
-	struct menu_item *item, *itemend, *lexact, *lprefix, *lsubstr, *exactend, *prefixend, *substrend;
-
-	state->matches = NULL;
+	struct menu_item *lexact = NULL, *exactend = NULL;
+	struct menu_item *lprefix = NULL, *prefixend = NULL;
+	struct menu_item *lsubstr  = NULL, *substrend = NULL;
+	state->matchstart = NULL;
 	state->matchend = NULL;
-	state->leftmost = NULL;
+	state->selection = NULL;
+
 	size_t len = strlen(state->text);
-	state->matches = lexact = lprefix = lsubstr = itemend = exactend = prefixend = substrend = NULL;
+
+	struct menu_item *item;
 	for (item = state->items; item; item = item->next) {
 		if (!state->fstrncmp(state->text, item->text, len + 1)) {
 			append_item(item, &lexact, &exactend);
@@ -911,32 +901,30 @@ void match(struct menu_state *state) {
 	}
 
 	if (lexact) {
-		state->matches = lexact;
-		itemend = exactend;
+		state->matchstart = lexact;
+		state->matchend = exactend;
 	}
 	if (lprefix) {
-		if (itemend) {
-			itemend->right = lprefix;
-			lprefix->left = itemend;
+		if (state->matchend) {
+			state->matchend->right = lprefix;
+			lprefix->left = state->matchend;
 		} else {
-			state->matches = lprefix;
+			state->matchstart = lprefix;
 		}
-		itemend = prefixend;
+		state->matchend = prefixend;
 	}
 	if (lsubstr) {
-		if (itemend) {
-			itemend->right = lsubstr;
-			lsubstr->left = itemend;
+		if (state->matchend) {
+			state->matchend->right = lsubstr;
+			lsubstr->left = state->matchend;
 		} else {
-			state->matches = lsubstr;
+			state->matchstart = lsubstr;
 		}
-		itemend = substrend;
+		state->matchend = substrend;
 	}
-	state->matchend = itemend;
-	state->selection = state->matches;
-	state->leftmost = state->matches;
-	state->rightmost = NULL;
-	scroll_matches(state);
+
+	group_items(state);
+	state->selection = state->groups->first;
 }
 
 size_t nextrune(struct menu_state *state, int incr) {
