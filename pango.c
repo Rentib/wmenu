@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-int get_font_height(char *fontstr) {
+#include "pango.h"
+
+int get_font_height(const char *fontstr) {
 	PangoFontMap *fontmap = pango_cairo_font_map_get_default();
 	PangoContext *context = pango_font_map_create_context(fontmap);
 	PangoFontDescription *desc = pango_font_description_from_string(fontstr);

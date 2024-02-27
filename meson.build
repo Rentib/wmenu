@@ -37,8 +37,10 @@ executable(
 	'wmenu',
 	files(
 		'main.c',
+		'menu.c',
 		'pango.c',
 		'pool-buffer.c',
+		'render.c',
 	),
 	dependencies: [
 		cairo,

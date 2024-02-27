@@ -1,5 +1,5 @@
-#ifndef DMENU_PANGO_H
-#define DMENU_PANGO_H
+#ifndef WMENU_PANGO_H
+#define WMENU_PANGO_H
 #include <stdbool.h>
 #include <cairo/cairo.h>
 #include <pango/pangocairo.h>

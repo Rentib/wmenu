@@ -11,6 +11,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
+
 #include "pool-buffer.h"
 
 static void randname(char *buf) {
