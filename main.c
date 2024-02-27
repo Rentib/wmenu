@@ -291,6 +291,27 @@ static size_t nextrune(struct menu *menu, int incr) {
 	return n;
 }
 
+static void movewordedge(struct menu *menu, int dir) {
+	if (dir < 0) {
+		// Move to beginning of word
+		while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] == ' ') {
+			menu->cursor = nextrune(menu, -1);
+		}
+		while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] != ' ') {
+			menu->cursor = nextrune(menu, -1);
+		}
+	} else {
+		// Move to end of word
+		size_t len = strlen(menu->input);
+		while (menu->cursor < len && menu->input[menu->cursor] == ' ') {
+			menu->cursor = nextrune(menu, +1);
+		}
+		while (menu->cursor < len && menu->input[menu->cursor] != ' ') {
+			menu->cursor = nextrune(menu, +1);
+		}
+	}
+}
+
 // Calculate text widths.
 static void calc_widths(struct menu *menu) {
 	cairo_t *cairo = menu->current->cairo;
@@ -573,6 +594,9 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 	bool ctrl = xkb_state_mod_name_is_active(menu->xkb_state,
 			XKB_MOD_NAME_CTRL,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
+	bool meta = xkb_state_mod_name_is_active(menu->xkb_state,
+			XKB_MOD_NAME_ALT,
+			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
 	bool shift = xkb_state_mod_name_is_active(menu->xkb_state,
 			XKB_MOD_NAME_SHIFT,
 			XKB_STATE_MODS_DEPRESSED | XKB_STATE_MODS_LATCHED);
@@ -682,29 +706,49 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			return;
 		case XKB_KEY_Left:
 		case XKB_KEY_KP_Left:
-			// Move to beginning of word
-			while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] == ' ') {
-				menu->cursor = nextrune(menu, -1);
-			}
-			while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] != ' ') {
-				menu->cursor = nextrune(menu, -1);
-			}
+			movewordedge(menu, -1);
 			render_frame(menu);
 			return;
 		case XKB_KEY_Right:
 		case XKB_KEY_KP_Right:
-			// Move to end of word
-			while (menu->cursor < len && menu->input[menu->cursor] == ' ') {
-				menu->cursor = nextrune(menu, +1);
-			}
-			while (menu->cursor < len && menu->input[menu->cursor] != ' ') {
-				menu->cursor = nextrune(menu, +1);
-			}
+			movewordedge(menu, +1);
 			render_frame(menu);
 			return;
 
 		case XKB_KEY_Return:
 		case XKB_KEY_KP_Enter:
+			break;
+		default:
+			return;
+		}
+	} else if (meta) {
+		// Emacs-style line editing bindings
+		switch (sym) {
+		case XKB_KEY_b:
+			movewordedge(menu, -1);
+			render_frame(menu);
+			return;
+		case XKB_KEY_f:
+			movewordedge(menu, +1);
+			render_frame(menu);
+			return;
+		case XKB_KEY_g:
+			sym = XKB_KEY_Home;
+			break;
+		case XKB_KEY_G:
+			sym = XKB_KEY_End;
+			break;
+		case XKB_KEY_h:
+			sym = XKB_KEY_Up;
+			break;
+		case XKB_KEY_j:
+			sym = XKB_KEY_Next;
+			break;
+		case XKB_KEY_k:
+			sym = XKB_KEY_Prior;
+			break;
+		case XKB_KEY_l:
+			sym = XKB_KEY_Down;
 			break;
 		default:
 			return;
@@ -752,15 +796,15 @@ static void keypress(struct menu *menu, enum wl_keyboard_key_state key_state,
 			render_frame(menu);
 		}
 		break;
-	case XKB_KEY_Page_Up:
-	case XKB_KEY_KP_Page_Up:
+	case XKB_KEY_Prior:
+	case XKB_KEY_KP_Prior:
 		if (menu->sel && menu->sel->page->prev) {
 			menu->sel = menu->sel->page->prev->first;
 			render_frame(menu);
 		}
 		break;
-	case XKB_KEY_Page_Down:
-	case XKB_KEY_KP_Page_Down:
+	case XKB_KEY_Next:
+	case XKB_KEY_KP_Next:
 		if (menu->sel && menu->sel->page->next) {
 			menu->sel = menu->sel->page->next->first;
 			render_frame(menu);

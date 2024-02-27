@@ -148,3 +148,27 @@ arrow keys, page up, page down, home, and end.
 |[ *C-w*
 :[ Delete word left
 
+|[ *M-b*
+:[ Move cursor to the start of the current word.
+
+|[ *M-f*
+:[ Move cursor to the end of the current word.
+
+|[ *M-g*
+:[ Home
+
+|[ *M-G*
+:[ End
+
+|[ *M-h*
+:[ Up
+
+|[ *M-j*
+:[ Page down
+
+|[ *M-k*
+:[ Page up
+
+|[ *M-l*
+:[ Down
+
