@@ -92,86 +92,86 @@ arrow keys, page up, page down, home, and end.
 	Move cursor to the end of the current word.
 
 |[ *C-a*
-:[ Home
+:< Home
 
 |[ *C-b*
-:[ Left
+:< Left
 
 |[ *C-c*
-:[ Escape
+:< Escape
 
 |[ *C-d*
-:[ Delete
+:< Delete
 
 |[ *C-e*
-:[ End
+:< End
 
 |[ *C-f*
-:[ Right
+:< Right
 
 |[ *C-g*
-:[ Escape
+:< Escape
 
 |[ *C-[*
-:[ Escape
+:< Escape
 
 |[ *C-h*
-:[ Backspace
+:< Backspace
 
 |[ *C-i*
-:[ Tab
+:< Tab
 
 |[ *C-j*
-:[ Return
+:< Return
 
 |[ *C-J*
-:[ Shift-Return
+:< Shift-Return
 
 |[ *C-k*
-:[ Delete line right
+:< Delete line right
 
 |[ *C-m*
-:[ Return
+:< Return
 
 |[ *C-M*
-:[ Shift-Return
+:< Shift-Return
 
 |[ *C-n*
-:[ Down
+:< Down
 
 |[ *C-p*
-:[ Up
+:< Up
 
 |[ *C-u*
-:[ Delete line left
+:< Delete line left
 
 |[ *C-w*
-:[ Delete word left
+:< Delete word left
 
 |[ *C-Y*
-:[ Paste from Wayland clipboard
+:< Paste from Wayland clipboard
 
 |[ *M-b*
-:[ Move cursor to the start of the current word.
+:< Move cursor to the start of the current word
 
 |[ *M-f*
-:[ Move cursor to the end of the current word.
+:< Move cursor to the end of the current word
 
 |[ *M-g*
-:[ Home
+:< Home
 
 |[ *M-G*
-:[ End
+:< End
 
 |[ *M-h*
-:[ Up
+:< Up
 
 |[ *M-j*
-:[ Page down
+:< Page down
 
 |[ *M-k*
-:[ Page up
+:< Page up
 
 |[ *M-l*
-:[ Down
+:< Down
 
