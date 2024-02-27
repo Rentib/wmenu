@@ -293,20 +293,22 @@ static void match_items(struct menu *menu) {
 
 // Read menu items from standard input.
 void read_menu_items(struct menu *menu) {
-	char buf[sizeof menu->input], *p;
-	struct item *item, **end;
+	char buf[sizeof menu->input];
 
-	for(end = &menu->items; fgets(buf, sizeof buf, stdin); *end = item, end = &item->next) {
-		if((p = strchr(buf, '\n'))) {
+	struct item **next = &menu->items;
+	while (fgets(buf, sizeof buf, stdin)) {
+		char *p = strchr(buf, '\n');
+		if (p) {
 			*p = '\0';
 		}
-		item = malloc(sizeof *item);
+		struct item *item = calloc(1, sizeof *item);
 		if (!item) {
 			return;
 		}
-
 		item->text = strdup(buf);
-		item->next = item->prev_match = item->next_match = NULL;
+
+		*next = item;
+		next = &item->next;
 	}
 
 	calc_widths(menu);
