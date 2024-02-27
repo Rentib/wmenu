@@ -148,6 +148,9 @@ arrow keys, page up, page down, home, and end.
 |[ *C-w*
 :[ Delete word left
 
+|[ *C-Y*
+:[ Paste from Wayland clipboard
+
 |[ *M-b*
 :[ Move cursor to the start of the current word.
 
