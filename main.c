@@ -195,19 +195,49 @@ static void match_items(struct menu *menu) {
 	struct item *lexact = NULL, *exactend = NULL;
 	struct item *lprefix = NULL, *prefixend = NULL;
 	struct item *lsubstr  = NULL, *substrend = NULL;
+	char buf[sizeof menu->input], *tok;
+	char **tokv = NULL;
+	int i, tokc = 0;
+	size_t tok_len;
 	menu->matches = NULL;
 	menu->matches_end = NULL;
 	menu->sel = NULL;
 
-	size_t len = strlen(menu->input);
+	size_t text_len = strlen(menu->input);
+
+	/* tokenize text by space for matching the tokens individually */
+	strcpy(buf, menu->input);
+	tok = strtok(buf, " ");
+	while (tok) {
+		tokv = realloc(tokv, (tokc + 1) * sizeof *tokv);
+		if (!tokv) {
+			fprintf(stderr, "could not realloc %zu bytes",
+					(tokc + 1) * sizeof *tokv);
+			exit(EXIT_FAILURE);
+		}
+		tokv[tokc] = tok;
+		tokc++;
+		tok = strtok(NULL, " ");
+	}
+	tok_len = tokc ? strlen(tokv[0]) : 0;
 
 	struct item *item;
 	for (item = menu->items; item; item = item->next) {
-		if (!menu->strncmp(menu->input, item->text, len + 1)) {
+		for (i = 0; i < tokc; i++) {
+			if (!fstrstr(menu, item->text, tokv[i])) {
+				/* token does not match */
+				break;
+			}
+		}
+		if (i != tokc) {
+			/* not all tokens match */
+			continue;
+		}
+		if (!tokc || !menu->strncmp(menu->input, item->text, text_len + 1)) {
 			append_item(item, &lexact, &exactend);
-		} else if (!menu->strncmp(menu->input, item->text, len)) {
+		} else if (!menu->strncmp(tokv[0], item->text, tok_len)) {
 			append_item(item, &lprefix, &prefixend);
-		} else if (fstrstr(menu, item->text, menu->input)) {
+		} else {
 			append_item(item, &lsubstr, &substrend);
 		}
 	}
