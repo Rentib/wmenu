@@ -337,12 +337,23 @@ static size_t nextrune(struct menu *menu, int incr) {
 
 // Move the cursor to the beginning or end of the word, skipping over any preceding whitespace.
 static void movewordedge(struct menu *menu, int dir) {
-	size_t len = strlen(menu->input);
-	while (menu->cursor > 0 && menu->cursor < len && menu->input[nextrune(menu, dir)] == ' ') {
-		menu->cursor = nextrune(menu, dir);
-	}
-	while (menu->cursor > 0 && menu->cursor < len && menu->input[nextrune(menu, dir)] != ' ') {
-		menu->cursor = nextrune(menu, dir);
+	if (dir < 0) {
+		// Move to beginning of word
+		while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] == ' ') {
+			menu->cursor = nextrune(menu, -1);
+		}
+		while (menu->cursor > 0 && menu->input[nextrune(menu, -1)] != ' ') {
+			menu->cursor = nextrune(menu, -1);
+		}
+	} else {
+		// Move to end of word
+		size_t len = strlen(menu->input);
+		while (menu->cursor < len && menu->input[menu->cursor] == ' ') {
+			menu->cursor = nextrune(menu, +1);
+		}
+		while (menu->cursor < len && menu->input[menu->cursor] != ' ') {
+			menu->cursor = nextrune(menu, +1);
+		}
 	}
 }
 
