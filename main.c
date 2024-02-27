@@ -83,7 +83,6 @@ static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 	assert(format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1);
 	struct keyboard *keyboard = data;
 
-	// TODO: MAP_PRIVATE vs MAP_SHARED
 	char *map_shm = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
 	assert (map_shm != MAP_FAILED);
 
