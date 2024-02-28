@@ -37,10 +37,19 @@ static bool parse_color(const char *color, uint32_t *result) {
 	return true;
 }
 
+int strnsmartcasecmp(const char *s1, const char *s2, size_t n) {
+	const char *c;
+	for (c = s2; *c; c++) {
+		if ('A' <= *c && *c <= 'Z')
+			return strncmp(s1, s2, n);
+	}
+	return strncasecmp(s1, s2, n);
+}
+
 // Initialize the menu.
 void menu_init(struct menu *menu, int argc, char *argv[]) {
 	menu->strncmp = strncmp;
-	menu->font = "monospace 10";
+	menu->font = "hack 10";
 	menu->background = 0x222222ff;
 	menu->foreground = 0xbbbbbbff;
 	menu->promptbg = 0x005577ff;
@@ -59,7 +68,7 @@ void menu_init(struct menu *menu, int argc, char *argv[]) {
 			menu->bottom = true;
 			break;
 		case 'i':
-			menu->strncmp = strncasecmp;
+			menu->strncmp = strnsmartcasecmp;
 			break;
 		case 'v':
 			puts("wmenu " VERSION);
