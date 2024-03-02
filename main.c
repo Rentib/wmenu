@@ -27,7 +27,8 @@ static void noop() {
 static void surface_enter(void *data, struct wl_surface *surface,
 		struct wl_output *wl_output) {
 	struct menu *menu = data;
-	menu->output = wl_output_get_user_data(wl_output);
+	struct output *output = wl_output_get_user_data(wl_output);
+	menu->output = output;
 }
 
 static const struct wl_surface_listener surface_listener = {
@@ -62,9 +63,10 @@ static void output_scale(void *data, struct wl_output *wl_output, int32_t factor
 
 static void output_name(void *data, struct wl_output *wl_output, const char *name) {
 	struct output *output = data;
+	output->name = name;
+
 	struct menu *menu = output->menu;
-	char *outname = menu->output_name;
-	if (!menu->output && outname && strcmp(outname, name) == 0) {
+	if (menu->output_name && strcmp(menu->output_name, name) == 0) {
 		menu->output = output;
 	}
 }
@@ -258,7 +260,7 @@ static void create_surface(struct menu *menu) {
 	struct zwlr_layer_surface_v1 *layer_surface = zwlr_layer_shell_v1_get_layer_surface(
 		menu->layer_shell,
 		menu->surface,
-		NULL,
+		menu->output ? menu->output->output : NULL,
 		ZWLR_LAYER_SHELL_V1_LAYER_TOP,
 		"menu"
 	);
