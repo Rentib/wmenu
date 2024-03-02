@@ -48,6 +48,8 @@ int strnsmartcasecmp(const char *s1, const char *s2, size_t n) {
 
 // Initialize the menu.
 void menu_init(struct menu *menu, int argc, char *argv[]) {
+	char buf[128];
+
 	menu->strncmp = strncmp;
 	menu->font = "hack 10";
 	menu->background = 0x222222ff;
@@ -74,7 +76,14 @@ void menu_init(struct menu *menu, int argc, char *argv[]) {
 			puts("wmenu " VERSION);
 			exit(EXIT_SUCCESS);
 		case 'f':
-			menu->font = optarg;
+			snprintf(buf, sizeof buf, "%s", optarg);
+			for (; optind < argc; optind++) {
+				if (argv[optind][0] == '-')
+					break;
+				strcat(buf, " ");
+				strcat(buf, argv[optind]);
+			}
+			menu->font = buf;
 			break;
 		case 'l':
 			menu->lines = atoi(optarg);
