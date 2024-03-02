@@ -27,6 +27,7 @@ struct page {
 struct output {
 	struct menu *menu;
 	struct wl_output *output;
+	const char *name;
 	int32_t scale;
 };
 
